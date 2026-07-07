@@ -35,6 +35,7 @@ namespace Effekseer
 			string export = string.Empty;
 			float magnification = 0.0f;
 			bool materialCache = false;
+			int automationPort = GetAutomationPortFromEnvironment();
 
 			for (int i = 0; i < args.Length; i++)
 			{
@@ -86,6 +87,14 @@ namespace Effekseer
 				{
 					materialCache = true;
 				}
+				else if (args[i] == "--automation-port")
+				{
+					i++;
+					if (i < args.Length)
+					{
+						automationPort = ParseAutomationPort(args[i], automationPort);
+					}
+				}
 				else
 				{
 					input = args[i];
@@ -94,13 +103,13 @@ namespace Effekseer
 
 			if (System.Diagnostics.Debugger.IsAttached)
 			{
-				return Exec(gui, input, output, export, format, magnification, materialCache);
+				return Exec(gui, input, output, export, format, magnification, materialCache, automationPort);
 			}
 			else
 			{
 				try
 				{
-					return Exec(gui, input, output, export, format, magnification, materialCache);
+					return Exec(gui, input, output, export, format, magnification, materialCache, automationPort);
 				}
 				catch (Exception e)
 				{
@@ -111,9 +120,10 @@ namespace Effekseer
 			return 1;
 		}
 
-		static int Exec(bool gui, string input, string output, string export, string format, float magnification, bool materialCache)
+		static int Exec(bool gui, string input, string output, string export, string format, float magnification, bool materialCache, int automationPort)
 		{
 			var app = new App();
+			app.AutomationPort = automationPort;
 			if (!app.Initialize(gui))
 			{
 				return 1;
@@ -190,6 +200,27 @@ namespace Effekseer
 			Core.Dispose();
 
 			return 0;
+		}
+
+		static int GetAutomationPortFromEnvironment()
+		{
+			var value = Environment.GetEnvironmentVariable("EFFEKSEER_AUTOMATION_PORT");
+			return ParseAutomationPort(value, 0);
+		}
+
+		static int ParseAutomationPort(string value, int fallback)
+		{
+			if (string.IsNullOrWhiteSpace(value))
+			{
+				return fallback;
+			}
+
+			if (int.TryParse(value, out var port) && port >= 1 && port <= 65535)
+			{
+				return port;
+			}
+
+			return fallback;
 		}
 	}
 }

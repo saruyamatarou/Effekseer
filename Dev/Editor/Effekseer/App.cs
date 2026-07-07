@@ -14,6 +14,13 @@ namespace Effekseer
 	public class App : Application
 	{
 		swig.DeviceType deviceType;
+		AutomationBridge automationBridge;
+
+		public int AutomationPort
+		{
+			get;
+			set;
+		}
 
 		protected override void OnInitialize()
 		{
@@ -66,14 +73,23 @@ namespace Effekseer
 			{
 				throw new InvalidOperationException("Initialization failed.");
 			}
+
+			if (AutomationPort > 0)
+			{
+				automationBridge = new AutomationBridge(AutomationPort);
+				automationBridge.Start();
+			}
 		}
 
 		protected override void OnUpdate()
 		{
+			automationBridge?.Update();
 		}
 
 		protected override void OnTerminate()
 		{
+			automationBridge?.Dispose();
+			automationBridge = null;
 		}
 
 		protected override void OnCreateMainMenu()
