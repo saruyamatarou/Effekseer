@@ -167,7 +167,10 @@ namespace Effekseer
 
 		static bool IsAllowedCommand(string command)
 		{
-			return command == "ping" || command == "get_status" || command == "add_node_to_selected";
+			return command == "ping" ||
+				command == "get_status" ||
+				command == "get_node_tree" ||
+				command == "add_node_to_selected";
 		}
 
 		static JObject ExecuteOnMainThread(string command)
@@ -183,6 +186,11 @@ namespace Effekseer
 			if (command == "get_status")
 			{
 				return CreateOk(command, CreateStatusPayload());
+			}
+
+			if (command == "get_node_tree")
+			{
+				return CreateOk(command, CreateNodeTreePayload());
 			}
 
 			if (command == "add_node_to_selected")
@@ -217,6 +225,32 @@ namespace Effekseer
 				["running"] = true,
 				["has_selected_node"] = selected != null,
 				["selected_node"] = selected != null ? CreateNodePayload(selected) : null
+			};
+		}
+
+		static JObject CreateNodeTreePayload()
+		{
+			return new JObject
+			{
+				["root"] = Core.Root != null ? CreateNodeTreeNodePayload(Core.Root) : null
+			};
+		}
+
+		static JObject CreateNodeTreeNodePayload(Data.NodeBase node)
+		{
+			var children = new JArray();
+			for (int i = 0; i < node.Children.Count; i++)
+			{
+				children.Add(CreateNodeTreeNodePayload(node.Children[i]));
+			}
+
+			return new JObject
+			{
+				["editorNodeId"] = node.EditorNodeId,
+				["name"] = node.Name.Value,
+				["isSelected"] = node == Core.SelectedNode,
+				["childCount"] = node.Children.Count,
+				["children"] = children
 			};
 		}
 

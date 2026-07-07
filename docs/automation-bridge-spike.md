@@ -8,7 +8,7 @@ This spike adds a minimal, opt-in automation bridge for controlling a running Ef
 - Binds only to `127.0.0.1`.
 - Enabled by `--automation-port <port>` or `EFFEKSEER_AUTOMATION_PORT=<port>`.
 - Uses JSON-line TCP: one JSON object per line, one JSON object response per line.
-- Allows only explicit commands: `ping`, `get_status`, and `add_node_to_selected`.
+- Allows only explicit commands: `ping`, `get_status`, `get_node_tree`, and `add_node_to_selected`.
 - Does not execute shell commands or arbitrary C# code.
 - Does not use UI clicks or GUI automation.
 
@@ -103,6 +103,22 @@ If a node is selected:
 ```json
 {"ok":true,"command":"add_node_to_selected","result":{"selected_node":{"name":"Node","editor_node_id":0,"children_count":1},"added_node":{"name":"Node","editor_node_id":0,"children_count":0}}}
 ```
+
+### get_node_tree
+
+Request:
+
+```json
+{"command":"get_node_tree"}
+```
+
+Response shape:
+
+```json
+{"ok":true,"command":"get_node_tree","result":{"root":{"editorNodeId":0,"name":"Root","isSelected":false,"childCount":1,"children":[{"editorNodeId":0,"name":"Node","isSelected":true,"childCount":0,"children":[]}]}}}
+```
+
+The response contains only editor node metadata needed by automation clients. It does not include project paths, resource paths, or other local filesystem information.
 
 ## Usage examples
 
