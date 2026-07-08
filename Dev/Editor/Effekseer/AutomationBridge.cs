@@ -57,14 +57,21 @@ namespace Effekseer
 			"set_node_fixed_scale_by_automation_id",
 		};
 		readonly int port;
+		readonly string automationWorkspaceRoot;
 		readonly ConcurrentQueue<PendingCommand> pendingCommands = new ConcurrentQueue<PendingCommand>();
 		readonly CancellationTokenSource cancellation = new CancellationTokenSource();
 		TcpListener listener;
 		Task acceptTask;
 
 		public AutomationBridge(int port)
+			: this(port, null)
+		{
+		}
+
+		public AutomationBridge(int port, string automationWorkspaceRoot)
 		{
 			this.port = port;
+			this.automationWorkspaceRoot = NormalizeAutomationWorkspaceRoot(automationWorkspaceRoot);
 		}
 
 		public void Start()
@@ -78,6 +85,10 @@ namespace Effekseer
 			listener.Start();
 			acceptTask = Task.Run(AcceptLoop);
 			Utils.Logger.Write($"Automation bridge listening on 127.0.0.1:{port}");
+			if (!string.IsNullOrEmpty(automationWorkspaceRoot))
+			{
+				Utils.Logger.Write("Automation bridge workspace is enabled.");
+			}
 		}
 
 		public void Update()
@@ -210,7 +221,7 @@ namespace Effekseer
 			return Array.IndexOf(AllowedCommands, command) >= 0;
 		}
 
-		static JObject ExecuteOnMainThread(string command, JObject parameters)
+		JObject ExecuteOnMainThread(string command, JObject parameters)
 		{
 			if (command == "get_bridge_capabilities")
 			{
@@ -886,6 +897,115 @@ namespace Effekseer
 			}
 
 			return CreateError(command, "unknown command");
+		}
+
+		static string NormalizeAutomationWorkspaceRoot(string workspaceRoot)
+		{
+			if (string.IsNullOrWhiteSpace(workspaceRoot))
+			{
+				return null;
+			}
+
+			var fullPath = Path.GetFullPath(workspaceRoot);
+			return TrimEndingDirectorySeparator(fullPath);
+		}
+
+		bool TryValidateWorkspacePath(string path, out string fullPath, out string workspaceRelativePath, out string error)
+		{
+			fullPath = null;
+			workspaceRelativePath = null;
+			error = null;
+
+			if (string.IsNullOrEmpty(automationWorkspaceRoot))
+			{
+				error = "automation workspace is not configured";
+				return false;
+			}
+
+			if (!Directory.Exists(automationWorkspaceRoot))
+			{
+				error = "automation workspace is not found";
+				return false;
+			}
+
+			if (string.IsNullOrWhiteSpace(path))
+			{
+				error = "path must not be empty";
+				return false;
+			}
+
+			if (HasParentDirectoryTraversal(path))
+			{
+				error = "path must not contain parent directory traversal";
+				return false;
+			}
+
+			fullPath = Path.IsPathRooted(path)
+				? Path.GetFullPath(path)
+				: Path.GetFullPath(Path.Combine(automationWorkspaceRoot, path));
+			fullPath = TrimEndingDirectorySeparator(fullPath);
+
+			if (!IsPathUnderWorkspace(fullPath, automationWorkspaceRoot))
+			{
+				error = "path must be inside automation workspace";
+				fullPath = null;
+				return false;
+			}
+
+			workspaceRelativePath = Path.GetRelativePath(automationWorkspaceRoot, fullPath).Replace(Path.DirectorySeparatorChar, '/');
+			if (workspaceRelativePath == ".")
+			{
+				workspaceRelativePath = string.Empty;
+			}
+
+			return true;
+		}
+
+		static bool HasParentDirectoryTraversal(string path)
+		{
+			var parts = path.Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries);
+			for (int i = 0; i < parts.Length; i++)
+			{
+				if (parts[i] == "..")
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		static bool IsPathUnderWorkspace(string fullPath, string workspaceRoot)
+		{
+			if (string.Equals(fullPath, workspaceRoot, StringComparison.OrdinalIgnoreCase))
+			{
+				return true;
+			}
+
+			var rootWithSeparator = workspaceRoot + Path.DirectorySeparatorChar;
+			return fullPath.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase);
+		}
+
+		static string TrimEndingDirectorySeparator(string path)
+		{
+			if (string.IsNullOrEmpty(path))
+			{
+				return path;
+			}
+
+			var root = Path.GetPathRoot(path);
+			if (!string.IsNullOrEmpty(root) && string.Equals(path, root, StringComparison.OrdinalIgnoreCase))
+			{
+				return root;
+			}
+
+			var trimmed = path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+			if (!string.IsNullOrEmpty(root) && string.IsNullOrEmpty(trimmed))
+			{
+				return root;
+			}
+
+			return trimmed;
 		}
 
 		static JObject CreateStatusPayload()

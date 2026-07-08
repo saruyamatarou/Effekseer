@@ -22,6 +22,12 @@ namespace Effekseer
 			set;
 		}
 
+		public string AutomationWorkspace
+		{
+			get;
+			set;
+		}
+
 		protected override void OnInitialize()
 		{
 			var dockTypes = new Type[]
@@ -76,7 +82,7 @@ namespace Effekseer
 
 			if (AutomationPort > 0)
 			{
-				automationBridge = new AutomationBridge(AutomationPort);
+				automationBridge = new AutomationBridge(AutomationPort, AutomationWorkspace);
 				automationBridge.Start();
 			}
 		}

@@ -36,6 +36,7 @@ namespace Effekseer
 			float magnification = 0.0f;
 			bool materialCache = false;
 			int automationPort = GetAutomationPortFromEnvironment();
+			string automationWorkspace = GetAutomationWorkspaceFromEnvironment();
 
 			for (int i = 0; i < args.Length; i++)
 			{
@@ -95,6 +96,14 @@ namespace Effekseer
 						automationPort = ParseAutomationPort(args[i], automationPort);
 					}
 				}
+				else if (args[i] == "--automation-workspace")
+				{
+					i++;
+					if (i < args.Length)
+					{
+						automationWorkspace = args[i];
+					}
+				}
 				else
 				{
 					input = args[i];
@@ -103,13 +112,13 @@ namespace Effekseer
 
 			if (System.Diagnostics.Debugger.IsAttached)
 			{
-				return Exec(gui, input, output, export, format, magnification, materialCache, automationPort);
+				return Exec(gui, input, output, export, format, magnification, materialCache, automationPort, automationWorkspace);
 			}
 			else
 			{
 				try
 				{
-					return Exec(gui, input, output, export, format, magnification, materialCache, automationPort);
+					return Exec(gui, input, output, export, format, magnification, materialCache, automationPort, automationWorkspace);
 				}
 				catch (Exception e)
 				{
@@ -120,10 +129,11 @@ namespace Effekseer
 			return 1;
 		}
 
-		static int Exec(bool gui, string input, string output, string export, string format, float magnification, bool materialCache, int automationPort)
+		static int Exec(bool gui, string input, string output, string export, string format, float magnification, bool materialCache, int automationPort, string automationWorkspace)
 		{
 			var app = new App();
 			app.AutomationPort = automationPort;
+			app.AutomationWorkspace = automationWorkspace;
 			if (!app.Initialize(gui))
 			{
 				return 1;
@@ -206,6 +216,11 @@ namespace Effekseer
 		{
 			var value = Environment.GetEnvironmentVariable("EFFEKSEER_AUTOMATION_PORT");
 			return ParseAutomationPort(value, 0);
+		}
+
+		static string GetAutomationWorkspaceFromEnvironment()
+		{
+			return Environment.GetEnvironmentVariable("EFFEKSEER_AUTOMATION_WORKSPACE");
 		}
 
 		static int ParseAutomationPort(string value, int fallback)

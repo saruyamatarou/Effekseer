@@ -7,6 +7,7 @@ This spike adds a minimal, opt-in automation bridge for controlling a running Ef
 - Disabled by default.
 - Binds only to `127.0.0.1`.
 - Enabled by `--automation-port <port>` or `EFFEKSEER_AUTOMATION_PORT=<port>`.
+- Optional automation workspace root can be set by `--automation-workspace <path>` or `EFFEKSEER_AUTOMATION_WORKSPACE=<path>`.
 - Uses JSON-line TCP: one JSON object per line, one JSON object response per line.
 - Allows only explicit commands. Use `get_bridge_capabilities` to retrieve the exact command list supported by the running editor.
 - Does not execute shell commands or arbitrary C# code.
@@ -17,7 +18,9 @@ This spike adds a minimal, opt-in automation bridge for controlling a running Ef
 - `Dev/Editor/Effekseer/Program.cs`
   - Main entry point.
   - Parses `--automation-port`.
+  - Parses `--automation-workspace`.
   - Reads `EFFEKSEER_AUTOMATION_PORT`.
+  - Reads `EFFEKSEER_AUTOMATION_WORKSPACE`.
 - `Dev/Editor/Effekseer/App.cs`
   - Editor application subclass.
   - Starts and stops the bridge.
@@ -51,6 +54,36 @@ For automation, extending that path would mix two different responsibilities:
 - automation bridge: external-controller-to-editor edit commands
 
 A separate bridge is smaller for this spike and avoids changing existing network behavior.
+
+## File operation safety design
+
+File/project operations are intentionally not implemented yet. Before adding commands such as project open, project save, or export, the bridge now has an automation workspace root and an internal path validation helper.
+
+Workspace root configuration:
+
+```powershell
+.\Effekseer.exe --automation-port 50123 --automation-workspace D:\Documents\GitHub\effekseer-mcp\workspace
+```
+
+Or:
+
+```powershell
+$env:EFFEKSEER_AUTOMATION_WORKSPACE = "D:\Documents\GitHub\effekseer-mcp\workspace"
+.\Effekseer.exe --automation-port 50123
+```
+
+Safety policy:
+
+- If the automation workspace is not configured, future file operation commands must return an error.
+- If the configured workspace directory does not exist, future file operation commands must return an error.
+- Paths received by the bridge must normalize inside the workspace root.
+- Relative paths are resolved against the workspace root.
+- Absolute paths are accepted only if their normalized form is still under the workspace root.
+- Parent directory traversal segments such as `..` are rejected.
+- Success responses should return workspace-relative paths only, not unnecessary absolute local paths.
+- `get_bridge_capabilities` does not advertise file/project commands yet because those commands are not implemented in this phase.
+
+The intended architecture is double validation: `effekseer-mcp` should validate paths against its own workspace boundary before sending a request, and the Effekseer Automation Bridge should validate again before touching the filesystem. The bridge-side validation is the final editor-side guard and must not trust the MCP client.
 
 ## Commands
 
