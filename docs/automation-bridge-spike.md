@@ -915,6 +915,56 @@ Response shape:
 
 Material clear, model assignment, texture/material copy/import, arbitrary file reads, directory listing, and workspace file deletion are intentionally deferred.
 
+### clear_node_material_by_automation_id
+
+Request:
+
+```json
+{"command":"clear_node_material_by_automation_id","params":{"automationNodeId":"0/1"}}
+```
+
+This clears `RendererCommonValues.MaterialFile.Path` and resets `RendererCommonValues.Material` to `Default`, which is the constructor default in `RendererCommonValues`.
+
+Response shape:
+
+```json
+{"ok":true,"command":"clear_node_material_by_automation_id","result":{"automationNodeId":"0/1","name":"Node","before":{"material":{"value":"File","valueId":128},"materialFile":{"hasValue":true,"pathStatus":"set_omitted","summary":"Path is set but omitted to avoid exposing absolute or workspace-outside paths"}},"after":{"material":{"value":"Default","valueId":0},"materialFile":{"hasValue":false,"pathStatus":"empty","summary":"No path is set"}},"rendererParameters":{}}}
+```
+
+## Model workspace assignment commands
+
+Model assignment v1 allows MCP/AI clients to assign an existing `.efkmodel` file under the configured automation workspace to `DrawingValues.Model.Model`. The command also sets `DrawingValues.Type` to `Model` and `DrawingValues.Model.ModelReference` to `File`; those enum values are selected by bridge code rather than accepted from the request.
+
+The bridge validates the requested path with the same workspace guard used by project, texture, and material operations:
+
+- `--automation-workspace` or `EFFEKSEER_AUTOMATION_WORKSPACE` must be configured.
+- The workspace directory must exist.
+- The requested path must normalize inside the workspace.
+- Parent traversal such as `..` is rejected.
+- The model file must already exist.
+- The extension must be `.efkmodel`.
+- The response returns only a workspace-relative path.
+
+The bridge does not add arbitrary file read or directory listing APIs. Setting `DrawingValues.Model.Model` uses Effekseer's existing value object path route.
+
+### set_node_model_from_workspace_by_automation_id
+
+Request:
+
+```json
+{"command":"set_node_model_from_workspace_by_automation_id","params":{"automationNodeId":"0/1","path":"inputs/models/test.efkmodel"}}
+```
+
+Response shape:
+
+```json
+{"ok":true,"command":"set_node_model_from_workspace_by_automation_id","result":{"automationNodeId":"0/1","name":"Node","path":"inputs/models/test.efkmodel","before":{"rendererType":{"value":"Sprite","valueId":2},"model":{"modelReference":{"value":"File","valueId":0},"model":{"hasValue":false,"pathStatus":"empty","summary":"No path is set"}}},"after":{"rendererType":{"value":"Model","valueId":5},"model":{"modelReference":{"value":"File","valueId":0},"model":{"hasValue":true,"pathStatus":"set_omitted","summary":"Path is set but omitted to avoid exposing absolute or workspace-outside paths"}}},"drawingParameters":{}}}
+```
+
+`get_node_drawing_parameters_by_automation_id` continues to omit absolute model paths. After assignment, the model reference is reported as `hasValue: true` and `pathStatus: set_omitted`.
+
+Model clear, model import/copy, arbitrary file reads, directory listing, glTF/glb export, and workspace file deletion are intentionally deferred.
+
 ## Parameter write commands
 
 This started as a minimal parameter write spike for one boolean field, `NodeBase.IsRendered`. The bridge now includes a small basic write set for hand-written, allowlisted numeric parameters. It still intentionally avoids a generic parameter setter.
@@ -1085,7 +1135,7 @@ $client.Close()
 - Drawing and renderer inspection commands never return absolute texture, material, model, or other local resource paths. Path fields are reported only as empty or set-but-omitted summaries in this phase.
 - Parameter write commands are explicitly allowlisted one by one. The current write surface is `set_node_is_rendered_by_automation_id`, the limited basic numeric write set, and the file-reference-free drawing/renderer write set; there is no generic `set_parameter`.
 - Drawing/renderer writes accept string allowlists for enums and bounded integer RGBA values only. They do not accept enum integer IDs, arbitrary property names, reflection writes, or texture/material/model path assignment.
-- Texture and material assignment commands are explicitly allowlisted and constrained to existing files under the configured automation workspace. They do not expose file contents, list directories, import/copy files, or return absolute local paths.
+- Texture, material, and model assignment commands are explicitly allowlisted and constrained to existing files under the configured automation workspace. They do not expose file contents, list directories, import/copy files, or return absolute local paths.
 - File operation commands are explicitly allowlisted and constrained to the configured automation workspace. They do not return absolute local paths.
 - Responses intentionally avoid absolute paths and local resource paths.
 
@@ -1101,5 +1151,6 @@ $client.Close()
 - Parameter write currently covers only `NodeBase.IsRendered`, `CommonValues.MaxGeneration`, `CommonValues.Life`, and fixed location/rotation/scale vectors. Undo/redo should use existing value object command routes, but end-to-end editor smoke testing should keep validating this as the write surface expands.
 - Drawing/renderer write currently covers `ColorAll.Fixed`, sprite fixed corner colors, renderer-common alpha blend, Z write/test, and renderer type. It does not assign texture/material/model files.
 - Texture assignment currently covers only renderer-common color and normal texture slots from existing workspace files with allowlisted image extensions. Sprite/Ribbon/Ring legacy `ColorTexture` and texture import/copy flows are not implemented.
-- Material assignment currently covers only assigning an existing workspace `.efkmat` file and switching renderer material type to `File`. Material clear, material import/copy, and model file assignment are not implemented.
+- Material assignment currently covers assigning an existing workspace `.efkmat` file, switching renderer material type to `File`, and clearing back to `Default`. Material import/copy is not implemented.
+- Model assignment currently covers only assigning an existing workspace `.efkmodel` file, switching drawing renderer type to `Model`, and selecting model reference type `File`. Model clear, model import/copy, and glTF/glb flows are not implemented.
 - File operations currently cover only `.efkefc` project save/open and `.efk` runtime binary export inside the automation workspace. glTF/glb export and asset import are planned for later phases.

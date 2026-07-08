@@ -37,6 +37,8 @@ namespace Effekseer
 			"clear_node_color_texture_by_automation_id",
 			"clear_node_normal_texture_by_automation_id",
 			"set_node_material_from_workspace_by_automation_id",
+			"clear_node_material_by_automation_id",
+			"set_node_model_from_workspace_by_automation_id",
 			"add_node_to_selected",
 			"select_node_by_id",
 			"add_node_to_parent",
@@ -485,6 +487,97 @@ namespace Effekseer
 					["before"] = before,
 					["after"] = after,
 					["rendererParameters"] = CreateNodeRendererParametersPayload(regularNode, automationNodeId)
+				});
+			}
+
+			if (command == "clear_node_material_by_automation_id")
+			{
+				if (!TryGetWritableDataNode(command, parameters, out var automationNodeId, out var regularNode, out var error))
+				{
+					return CreateError(command, error);
+				}
+
+				var values = regularNode.RendererCommonValues;
+				var before = new JObject
+				{
+					["material"] = CreateEnumPayload(values.Material),
+					["materialFile"] = CreatePathReferencePayload(values.MaterialFile.Path)
+				};
+
+				Command.CommandManager.StartCollection();
+				try
+				{
+					values.Material.SetValue(Data.RendererCommonValues.MaterialType.Default);
+					values.MaterialFile.Path.SetAbsolutePath(string.Empty);
+				}
+				finally
+				{
+					Command.CommandManager.EndCollection();
+				}
+
+				var after = new JObject
+				{
+					["material"] = CreateEnumPayload(values.Material),
+					["materialFile"] = CreatePathReferencePayload(values.MaterialFile.Path)
+				};
+
+				return CreateOk(command, new JObject
+				{
+					["automationNodeId"] = automationNodeId,
+					["name"] = regularNode.Name.Value,
+					["before"] = before,
+					["after"] = after,
+					["rendererParameters"] = CreateNodeRendererParametersPayload(regularNode, automationNodeId)
+				});
+			}
+
+			if (command == "set_node_model_from_workspace_by_automation_id")
+			{
+				if (!TryGetWritableDataNode(command, parameters, out var automationNodeId, out var regularNode, out var error) ||
+					!TryGetStringParameter(parameters, "path", out var path, out error))
+				{
+					return CreateError(command, error);
+				}
+
+				if (!TryValidateWorkspaceModelPath(path, out var fullPath, out var workspaceRelativePath, out error))
+				{
+					return CreateError(command, error);
+				}
+
+				var values = regularNode.DrawingValues;
+				var model = values.Model;
+				var before = new JObject
+				{
+					["rendererType"] = CreateEnumPayload(values.Type),
+					["model"] = CreateModelDrawingPayload(model)
+				};
+
+				Command.CommandManager.StartCollection();
+				try
+				{
+					values.Type.SetValue(Data.RendererValues.ParamaterType.Model);
+					model.ModelReference.SetValue(Data.ModelReferenceType.File);
+					model.Model.SetAbsolutePath(fullPath);
+				}
+				finally
+				{
+					Command.CommandManager.EndCollection();
+				}
+
+				var after = new JObject
+				{
+					["rendererType"] = CreateEnumPayload(values.Type),
+					["model"] = CreateModelDrawingPayload(model)
+				};
+
+				return CreateOk(command, new JObject
+				{
+					["automationNodeId"] = automationNodeId,
+					["name"] = regularNode.Name.Value,
+					["path"] = workspaceRelativePath,
+					["before"] = before,
+					["after"] = after,
+					["drawingParameters"] = CreateNodeDrawingParametersPayload(regularNode, automationNodeId)
 				});
 			}
 
@@ -1503,6 +1596,32 @@ namespace Effekseer
 			if (!File.Exists(fullPath))
 			{
 				error = "material file is not found";
+				fullPath = null;
+				workspaceRelativePath = null;
+				return false;
+			}
+
+			return true;
+		}
+
+		bool TryValidateWorkspaceModelPath(string path, out string fullPath, out string workspaceRelativePath, out string error)
+		{
+			if (!TryValidateWorkspacePath(path, out fullPath, out workspaceRelativePath, out error))
+			{
+				return false;
+			}
+
+			if (!string.Equals(Path.GetExtension(fullPath), ".efkmodel", StringComparison.OrdinalIgnoreCase))
+			{
+				error = "path extension must be .efkmodel";
+				fullPath = null;
+				workspaceRelativePath = null;
+				return false;
+			}
+
+			if (!File.Exists(fullPath))
+			{
+				error = "model file is not found";
 				fullPath = null;
 				workspaceRelativePath = null;
 				return false;
