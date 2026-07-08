@@ -546,6 +546,7 @@ Investigation notes:
 - GUI dock panels use `BindableComponent.ParameterList.SetValue(...)` with those objects, for example common/basic settings, spawning method, position, rotation, scale, render settings, sound, kill rules, collisions, and GPU particles.
 - Safe for this phase: node identity, tree/layer counts, `IsRendered`, class/type names, and allowlisted coarse group names.
 - Parameter value inspection reads only hand-written allowlisted properties. `CommonValues.Generation`, `CommonValues.Life`, `CommonValues.MaxGeneration`, `LocationValues`, `RotationValues`, and `ScalingValues` expose basic numeric value objects that can be safely summarized without reflection.
+- Drawing/renderer inspection reads `Data.Node.DrawingValues` and `Data.Node.RendererCommonValues`, the same objects used by the Render Settings and Basic Render Settings dock panels.
 - `Value.FloatWithRandom` and `Value.IntWithRandom` are returned as `center`, `min`, `max`, `amplitude`, and `drawnAs`. `Value.Vector3D` is returned as `x/y/z`. `Value.Vector3DWithRandom` returns one random summary per axis.
 - Complex curve data is currently summarized only. NURBS curve file paths and other local resource paths are intentionally omitted.
 - Deferred for a later phase: writing parameters, texture replacement, file open/save, arbitrary reflection dumps, arbitrary property-name reads, and full FCurve/NURBS data extraction.
@@ -638,7 +639,41 @@ Response shape:
 
 The actual response includes the same allowlisted value summaries for PVA/easing/axis/single-scale groups. `FCurve` values are intentionally summarized for now. The root node does not have transform parameter objects; the bridge returns an error if this command targets root.
 
-Parameter write remains a future phase. A later write API should use stable allowlisted parameter IDs, validation rules, and undo-aware editor commands instead of accepting arbitrary property paths.
+### get_node_drawing_parameters_by_automation_id
+
+Request:
+
+```json
+{"command":"get_node_drawing_parameters_by_automation_id","params":{"automationNodeId":"0/1"}}
+```
+
+Response shape:
+
+```json
+{"ok":true,"command":"get_node_drawing_parameters_by_automation_id","result":{"automationNodeId":"0/1","name":"Node","rendererType":{"value":"Sprite","valueId":2},"textureUVType":{"type":{"value":"Strech","valueId":0},"tileLength":{"value":1.0},"tileEdgeHead":{"value":0},"tileEdgeTail":{"value":0},"tileLoopingArea":{"x":0.0,"y":1.0}},"trailSmoothing":{"value":"Enabled","valueId":0},"trailTimeSource":{"value":"ParticleGroup","valueId":0},"colorAll":{"type":{"value":"Fixed","valueId":0},"fixed":{"r":255,"g":255,"b":255,"a":255,"colorSpace":"RGBA"},"random":{"kind":"color_random","summary":"Random color values are summarized in this read-only spike"}},"sprite":{"renderingOrder":{"value":"FirstCreatedInstanceIsFirst","valueId":0},"billboard":{"value":"Billboard","valueId":0},"colorType":{"value":"Default","valueId":0},"colorTexture":{"hasValue":false,"pathStatus":"empty","summary":"No path is set"}}}}
+```
+
+This command targets only regular `Data.Node` objects. It exposes the renderer type (`None`, `Sprite`, `Ribbon`, `Ring`, `Track`, `Model`), representative Sprite/Ribbon/Ring/Track/Model fields, color summaries, and texture UV settings. Complex color random/easing/FCurve/gradient data and procedural model details are summarized instead of fully expanded.
+
+Texture/model path fields are never returned as absolute paths. In this spike, path references are reported as `empty` or `set_omitted`; future workspace-aware asset inspection can add workspace-relative paths only after a safe asset import/catalog contract exists.
+
+### get_node_renderer_parameters_by_automation_id
+
+Request:
+
+```json
+{"command":"get_node_renderer_parameters_by_automation_id","params":{"automationNodeId":"0/1"}}
+```
+
+Response shape:
+
+```json
+{"ok":true,"command":"get_node_renderer_parameters_by_automation_id","result":{"automationNodeId":"0/1","name":"Node","material":{"type":{"value":"Default","valueId":0},"materialFile":{"hasValue":false,"pathStatus":"empty","summary":"No path is set"},"emissiveScaling":{"value":1.0},"distortionIntensity":{"value":1.0}},"textures":{"colorTexture":{"reference":{"hasValue":false,"pathStatus":"empty","summary":"No path is set"},"filter":{"value":"Linear","valueId":1},"wrap":{"value":"Repeat","valueId":0}}},"blend":{"alphaBlend":{"value":"Blend","valueId":0},"zWrite":false,"zTest":true},"uv":{"type":{"value":"Default","valueId":0},"textureReferenceTarget":{"value":"Texture1","valueId":1},"flipHorizontalProbability":{"value":0}}}}
+```
+
+This command reads `RendererCommonValues`: material type, material file reference summary, color/normal texture slot summaries, filter/wrap modes, alpha blend, Z write/test, fade, UV, color inheritance, and custom data summaries. It is read-only and does not inspect arbitrary renderer properties by name.
+
+Parameter write remains a separate phase. Write APIs should continue to use stable allowlisted parameter IDs, validation rules, and undo-aware editor commands instead of accepting arbitrary property paths.
 
 ## Parameter write commands
 
@@ -806,7 +841,8 @@ $client.Close()
 - Editor state reads and mutations run from `AutomationBridge.Update()` on the main/UI thread.
 - Viewer playback commands run from `AutomationBridge.Update()` on the main/UI thread and call existing editor command methods; they do not click or automate GUI controls.
 - Parameter inspection commands are read-only and expose only allowlisted summary fields/group names.
-- Parameter value inspection commands are read-only and expose only hand-written allowlisted numeric/enum/boolean summaries. They do not perform reflection dumps or arbitrary property-name reads.
+- Parameter value inspection commands are read-only and expose only hand-written allowlisted numeric/enum/boolean/drawing/renderer summaries. They do not perform reflection dumps or arbitrary property-name reads.
+- Drawing and renderer inspection commands never return absolute texture, material, model, or other local resource paths. Path fields are reported only as empty or set-but-omitted summaries in this phase.
 - Parameter write commands are explicitly allowlisted one by one. The current write surface is `set_node_is_rendered_by_automation_id` plus the limited basic numeric write set; there is no generic `set_parameter`.
 - File operation commands are explicitly allowlisted and constrained to the configured automation workspace. They do not return absolute local paths.
 - Responses intentionally avoid absolute paths and local resource paths.
@@ -818,6 +854,7 @@ $client.Close()
 - `rename_node` rejects the root node for now.
 - Node names accepted through the bridge are limited to 128 characters.
 - The bridge has no authentication beyond opt-in loopback binding.
-- Parameter value inspection currently covers base, generation/common, location, rotation, and scale summaries only. It does not mutate values and does not expand full FCurve/NURBS data.
+- Parameter value inspection currently covers base, generation/common, location, rotation, scale, drawing, and renderer-common summaries. It does not mutate values and does not expand full FCurve/NURBS/color-gradient/procedural-model data.
+- Texture/material/model references are currently path summaries only. A future asset inspection phase can return workspace-relative paths after defining a safe asset catalog contract.
 - Parameter write currently covers only `NodeBase.IsRendered`, `CommonValues.MaxGeneration`, `CommonValues.Life`, and fixed location/rotation/scale vectors. Undo/redo should use existing value object command routes, but end-to-end editor smoke testing should keep validating this as the write surface expands.
 - File operations currently cover only `.efkefc` project save/open and `.efk` runtime binary export inside the automation workspace. glTF/glb export and asset import are planned for later phases.

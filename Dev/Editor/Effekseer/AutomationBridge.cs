@@ -53,6 +53,8 @@ namespace Effekseer
 			"get_node_base_parameters_by_automation_id",
 			"get_node_generation_parameters_by_automation_id",
 			"get_node_transform_parameters_by_automation_id",
+			"get_node_drawing_parameters_by_automation_id",
+			"get_node_renderer_parameters_by_automation_id",
 			"set_node_is_rendered_by_automation_id",
 			"set_node_max_generation_by_automation_id",
 			"set_node_life_by_automation_id",
@@ -437,6 +439,48 @@ namespace Effekseer
 				}
 
 				return CreateOk(command, CreateNodeTransformParametersPayload(regularNode, automationNodeId));
+			}
+
+			if (command == "get_node_drawing_parameters_by_automation_id")
+			{
+				if (!TryGetStringParameter(parameters, "automationNodeId", out var automationNodeId, out var error))
+				{
+					return CreateError(command, error);
+				}
+
+				var node = FindNodeByAutomationNodeId(automationNodeId, out error);
+				if (node == null)
+				{
+					return CreateError(command, error);
+				}
+
+				if (!(node is Data.Node regularNode))
+				{
+					return CreateError(command, "node does not have drawing parameters");
+				}
+
+				return CreateOk(command, CreateNodeDrawingParametersPayload(regularNode, automationNodeId));
+			}
+
+			if (command == "get_node_renderer_parameters_by_automation_id")
+			{
+				if (!TryGetStringParameter(parameters, "automationNodeId", out var automationNodeId, out var error))
+				{
+					return CreateError(command, error);
+				}
+
+				var node = FindNodeByAutomationNodeId(automationNodeId, out error);
+				if (node == null)
+				{
+					return CreateError(command, error);
+				}
+
+				if (!(node is Data.Node regularNode))
+				{
+					return CreateError(command, "node does not have renderer parameters");
+				}
+
+				return CreateOk(command, CreateNodeRendererParametersPayload(regularNode, automationNodeId));
 			}
 
 			if (command == "set_node_is_rendered_by_automation_id")
@@ -1307,6 +1351,300 @@ namespace Effekseer
 			};
 		}
 
+		static JObject CreateNodeDrawingParametersPayload(Data.Node node, string automationNodeId)
+		{
+			var values = node.DrawingValues;
+			return new JObject
+			{
+				["automationNodeId"] = automationNodeId,
+				["name"] = node.Name.Value,
+				["rendererType"] = CreateEnumPayload(values.Type),
+				["textureUVType"] = CreateTextureUVTypePayload(values.TextureUVType),
+				["trailSmoothing"] = CreateEnumPayload(values.TrailSmoothing),
+				["trailTimeSource"] = CreateEnumPayload(values.TrailTimeSource),
+				["colorAll"] = CreateStandardColorPayload(values.ColorAll),
+				["trackColors"] = new JObject
+				{
+					["left"] = CreateStandardColorPayload(values.TrailColorLeft),
+					["leftMiddle"] = CreateStandardColorPayload(values.TrailColorLeftMiddle),
+					["center"] = CreateStandardColorPayload(values.TrailColorCenter),
+					["centerMiddle"] = CreateStandardColorPayload(values.TrailColorCenterMiddle),
+					["right"] = CreateStandardColorPayload(values.TrailColorRight),
+					["rightMiddle"] = CreateStandardColorPayload(values.TrailColorRightMiddle)
+				},
+				["sprite"] = CreateSpriteDrawingPayload(values.Sprite),
+				["ribbon"] = CreateRibbonDrawingPayload(values.Ribbon),
+				["ring"] = CreateRingDrawingPayload(values.Ring),
+				["track"] = CreateTrackDrawingPayload(values.Track),
+				["model"] = CreateModelDrawingPayload(values.Model),
+				["notes"] = new JArray
+				{
+					"Only allowlisted drawing fields are expanded.",
+					"Complex color easing, random color, gradients, and model/procedural data are summarized."
+				}
+			};
+		}
+
+		static JObject CreateNodeRendererParametersPayload(Data.Node node, string automationNodeId)
+		{
+			var values = node.RendererCommonValues;
+			return new JObject
+			{
+				["automationNodeId"] = automationNodeId,
+				["name"] = node.Name.Value,
+				["material"] = new JObject
+				{
+					["type"] = CreateEnumPayload(values.Material),
+					["materialFile"] = CreatePathReferencePayload(values.MaterialFile.Path),
+					["emissiveScaling"] = CreateFloatPayload(values.EmissiveScaling),
+					["distortionIntensity"] = CreateFloatPayload(values.DistortionIntensity)
+				},
+				["textures"] = new JObject
+				{
+					["colorTexture"] = new JObject
+					{
+						["reference"] = CreatePathReferencePayload(values.ColorTexture),
+						["filter"] = CreateEnumPayload(values.Filter),
+						["wrap"] = CreateEnumPayload(values.Wrap)
+					},
+					["normalTexture"] = new JObject
+					{
+						["reference"] = CreatePathReferencePayload(values.NormalTexture),
+						["filter"] = CreateEnumPayload(values.Filter2),
+						["wrap"] = CreateEnumPayload(values.Wrap2)
+					}
+				},
+				["blend"] = new JObject
+				{
+					["alphaBlend"] = CreateEnumPayload(values.AlphaBlend),
+					["zWrite"] = values.ZWrite.Value,
+					["zTest"] = values.ZTest.Value
+				},
+				["fade"] = new JObject
+				{
+					["fadeInType"] = CreateEnumPayload(values.FadeInType),
+					["fadeIn"] = CreateFadePayload(values.FadeIn),
+					["fadeOutType"] = CreateEnumPayload(values.FadeOutType),
+					["fadeOut"] = CreateFadePayload(values.FadeOut)
+				},
+				["uv"] = CreateUVPayload(values),
+				["colorInheritType"] = CreateEnumPayload(values.ColorInheritType),
+				["customData"] = new JObject
+				{
+					["customData1"] = CreateCustomDataPayload(values.CustomData1),
+					["customData2"] = CreateCustomDataPayload(values.CustomData2)
+				},
+				["notes"] = new JArray
+				{
+					"Texture and material absolute paths are never returned.",
+					"Path references are reported as empty or set_omitted in this read-only spike."
+				}
+			};
+		}
+
+		static JObject CreateTextureUVTypePayload(Data.TextureUVTypeParameter value)
+		{
+			return new JObject
+			{
+				["type"] = CreateEnumPayload(value.Type),
+				["tileLength"] = CreateFloatPayload(value.TileLength),
+				["tileEdgeHead"] = CreateIntPayload(value.TileEdgeHead),
+				["tileEdgeTail"] = CreateIntPayload(value.TileEdgeTail),
+				["tileLoopingArea"] = CreateVector2DPayload(value.TileLoopingArea)
+			};
+		}
+
+		static JObject CreateStandardColorPayload(Data.StandardColor value)
+		{
+			return new JObject
+			{
+				["type"] = CreateEnumPayload(value.Type),
+				["fixed"] = CreateColorPayload(value.Fixed),
+				["random"] = CreateComplexSummaryPayload("color_random", "Random color values are summarized in this read-only spike"),
+				["easing"] = CreateComplexSummaryPayload("color_easing", "Color easing values are summarized in this read-only spike"),
+				["fcurve"] = CreateComplexSummaryPayload("color_fcurve", "Color FCurve values are not expanded in this read-only spike"),
+				["gradient"] = CreateComplexSummaryPayload("gradient", "Gradient stops are not expanded in this read-only spike")
+			};
+		}
+
+		static JObject CreateSpriteDrawingPayload(Data.RendererValues.SpriteParamater value)
+		{
+			return new JObject
+			{
+				["renderingOrder"] = CreateEnumPayload(value.RenderingOrder),
+				["billboard"] = CreateEnumPayload(value.Billboard),
+				["colorType"] = CreateEnumPayload(value.Color),
+				["fixedColors"] = new JObject
+				{
+					["lowerLeft"] = CreateColorPayload(value.Color_Fixed_LL),
+					["lowerRight"] = CreateColorPayload(value.Color_Fixed_LR),
+					["upperLeft"] = CreateColorPayload(value.Color_Fixed_UL),
+					["upperRight"] = CreateColorPayload(value.Color_Fixed_UR)
+				},
+				["positionType"] = CreateEnumPayload(value.Position),
+				["fixedPositions"] = new JObject
+				{
+					["lowerLeft"] = CreateVector2DPayload(value.Position_Fixed_LL),
+					["lowerRight"] = CreateVector2DPayload(value.Position_Fixed_LR),
+					["upperLeft"] = CreateVector2DPayload(value.Position_Fixed_UL),
+					["upperRight"] = CreateVector2DPayload(value.Position_Fixed_UR)
+				},
+				["colorTexture"] = CreatePathReferencePayload(value.ColorTexture)
+			};
+		}
+
+		static JObject CreateRibbonDrawingPayload(Data.RendererValues.RibbonParamater value)
+		{
+			return new JObject
+			{
+				["viewpointDependent"] = value.ViewpointDependent.Value,
+				["colorAllType"] = CreateEnumPayload(value.ColorAll),
+				["colorAllFixed"] = CreateColorPayload(value.ColorAll_Fixed),
+				["colorType"] = CreateEnumPayload(value.Color),
+				["fixedColors"] = new JObject
+				{
+					["left"] = CreateColorPayload(value.Color_Fixed_L),
+					["right"] = CreateColorPayload(value.Color_Fixed_R)
+				},
+				["positionType"] = CreateEnumPayload(value.Position),
+				["fixedPositions"] = new JObject
+				{
+					["left"] = CreateFloatPayload(value.Position_Fixed_L),
+					["right"] = CreateFloatPayload(value.Position_Fixed_R)
+				},
+				["splineDivision"] = CreateIntPayload(value.SplineDivision),
+				["colorTexture"] = CreatePathReferencePayload(value.ColorTexture)
+			};
+		}
+
+		static JObject CreateRingDrawingPayload(Data.RendererValues.RingParamater value)
+		{
+			return new JObject
+			{
+				["ringShape"] = new JObject
+				{
+					["type"] = CreateEnumPayload(value.RingShape.Type),
+					["crescent"] = new JObject
+					{
+						["startingFade"] = CreateFloatPayload(value.RingShape.Crescent.StartingFade),
+						["endingFade"] = CreateFloatPayload(value.RingShape.Crescent.EndingFade),
+						["startingAngleType"] = CreateEnumPayload(value.RingShape.Crescent.StartingAngle),
+						["startingAngleFixed"] = CreateFloatPayload(value.RingShape.Crescent.StartingAngle_Fixed),
+						["endingAngleType"] = CreateEnumPayload(value.RingShape.Crescent.EndingAngle),
+						["endingAngleFixed"] = CreateFloatPayload(value.RingShape.Crescent.EndingAngle_Fixed)
+					}
+				},
+				["renderingOrder"] = CreateEnumPayload(value.RenderingOrder),
+				["billboard"] = CreateEnumPayload(value.Billboard),
+				["vertexCount"] = CreateIntPayload(value.VertexCount),
+				["outerType"] = CreateEnumPayload(value.Outer),
+				["outerFixed"] = CreateVector2DPayload(value.Outer_Fixed.Location),
+				["innerType"] = CreateEnumPayload(value.Inner),
+				["innerFixed"] = CreateVector2DPayload(value.Inner_Fixed.Location),
+				["centerRatioType"] = CreateEnumPayload(value.CenterRatio),
+				["centerRatioFixed"] = CreateFloatPayload(value.CenterRatio_Fixed),
+				["outerColorType"] = CreateEnumPayload(value.OuterColor),
+				["outerColorFixed"] = CreateColorPayload(value.OuterColor_Fixed),
+				["centerColorType"] = CreateEnumPayload(value.CenterColor),
+				["centerColorFixed"] = CreateColorPayload(value.CenterColor_Fixed),
+				["innerColorType"] = CreateEnumPayload(value.InnerColor),
+				["innerColorFixed"] = CreateColorPayload(value.InnerColor_Fixed),
+				["colorTexture"] = CreatePathReferencePayload(value.ColorTexture)
+			};
+		}
+
+		static JObject CreateTrackDrawingPayload(Data.RendererValues.TrackParameter value)
+		{
+			return new JObject
+			{
+				["trackSizeForType"] = CreateEnumPayload(value.TrackSizeFor),
+				["trackSizeForFixed"] = CreateFloatPayload(value.TrackSizeFor_Fixed),
+				["trackSizeMiddleType"] = CreateEnumPayload(value.TrackSizeMiddle),
+				["trackSizeMiddleFixed"] = CreateFloatPayload(value.TrackSizeMiddle_Fixed),
+				["trackSizeBackType"] = CreateEnumPayload(value.TrackSizeBack),
+				["trackSizeBackFixed"] = CreateFloatPayload(value.TrackSizeBack_Fixed),
+				["splineDivision"] = CreateIntPayload(value.SplineDivision),
+				["note"] = "Track color values are exposed through trackColors at the drawing payload root."
+			};
+		}
+
+		static JObject CreateModelDrawingPayload(Data.RendererValues.ModelParamater value)
+		{
+			return new JObject
+			{
+				["modelReference"] = CreateEnumPayload(value.ModelReference),
+				["model"] = CreatePathReferencePayload(value.Model),
+				["externalModelIndex"] = CreateIntPayload(value.ExternalModelIndex),
+				["billboard"] = CreateEnumPayload(value.Billboard),
+				["culling"] = CreateEnumPayload(value.Culling),
+				["proceduralModel"] = CreateComplexSummaryPayload("procedural_model", "Procedural model data is summarized in this read-only spike")
+			};
+		}
+
+		static JObject CreateFadePayload(Data.RendererCommonValues.FadeInParamater value)
+		{
+			return new JObject
+			{
+				["frame"] = CreateFloatPayload(value.Frame),
+				["startSpeed"] = CreateEnumPayload(value.StartSpeed),
+				["endSpeed"] = CreateEnumPayload(value.EndSpeed)
+			};
+		}
+
+		static JObject CreateFadePayload(Data.RendererCommonValues.FadeOutParamater value)
+		{
+			return new JObject
+			{
+				["frame"] = CreateFloatPayload(value.Frame),
+				["startSpeed"] = CreateEnumPayload(value.StartSpeed),
+				["endSpeed"] = CreateEnumPayload(value.EndSpeed)
+			};
+		}
+
+		static JObject CreateUVPayload(Data.RendererCommonValues values)
+		{
+			return new JObject
+			{
+				["type"] = CreateEnumPayload(values.UV),
+				["textureReferenceTarget"] = CreateEnumPayload(values.UVTextureReferenceTarget),
+				["flipHorizontalProbability"] = CreateIntPayload(values.UVFlipHorizontalProbability),
+				["fixed"] = new JObject
+				{
+					["start"] = CreateVector2DPayload(values.UVFixed.Start),
+					["size"] = CreateVector2DPayload(values.UVFixed.Size)
+				},
+				["animation"] = new JObject
+				{
+					["start"] = CreateVector2DPayload(values.UVAnimation.AnimationParams.Start),
+					["size"] = CreateVector2DPayload(values.UVAnimation.AnimationParams.Size),
+					["frameLength"] = CreateIntWithInfinitePayload(values.UVAnimation.AnimationParams.FrameLength),
+					["frameCountX"] = CreateIntPayload(values.UVAnimation.AnimationParams.FrameCountX),
+					["frameCountY"] = CreateIntPayload(values.UVAnimation.AnimationParams.FrameCountY),
+					["loopType"] = CreateEnumPayload(values.UVAnimation.AnimationParams.LoopType),
+					["startSheet"] = CreateIntWithRandomPayload(values.UVAnimation.AnimationParams.StartSheet),
+					["flipbookInterpolationType"] = CreateEnumPayload(values.UVAnimation.FlipbookInterpolationType)
+				},
+				["scroll"] = new JObject
+				{
+					["start"] = CreateVector2DWithRandomPayload(values.UVScroll.Start),
+					["size"] = CreateVector2DWithRandomPayload(values.UVScroll.Size),
+					["speed"] = CreateVector2DWithRandomPayload(values.UVScroll.Speed)
+				},
+				["fcurve"] = CreateComplexSummaryPayload("uv_fcurve", "UV FCurve values are not expanded in this read-only spike")
+			};
+		}
+
+		static JObject CreateCustomDataPayload(Data.CustomDataParameter value)
+		{
+			return new JObject
+			{
+				["type"] = CreateEnumPayload(value.CustomData),
+				["fixed"] = CreateVector2DPayload(value.Fixed),
+				["fixed4"] = CreateVector4DPayload(value.Fixed4),
+				["random"] = CreateComplexSummaryPayload("custom_data_random", "Custom data random/easing/FCurve values are summarized in this read-only spike")
+			};
+		}
+
 		static JObject CreateLocationParametersPayload(Data.LocationValues values)
 		{
 			return new JObject
@@ -1410,6 +1748,14 @@ namespace Effekseer
 			};
 		}
 
+		static JObject CreateIntPayload(Data.Value.Int value)
+		{
+			return new JObject
+			{
+				["value"] = value.Value
+			};
+		}
+
 		static JObject CreateFloatWithRandomPayload(Data.Value.FloatWithRandom value)
 		{
 			return new JObject
@@ -1443,6 +1789,25 @@ namespace Effekseer
 			};
 		}
 
+		static JObject CreateVector2DPayload(Data.Value.Vector2D value)
+		{
+			return new JObject
+			{
+				["x"] = value.X.Value,
+				["y"] = value.Y.Value
+			};
+		}
+
+		static JObject CreateVector2DWithRandomPayload(Data.Value.Vector2DWithRandom value)
+		{
+			return new JObject
+			{
+				["x"] = CreateFloatWithRandomPayload(value.X),
+				["y"] = CreateFloatWithRandomPayload(value.Y),
+				["drawnAs"] = value.DrawnAs.ToString()
+			};
+		}
+
 		static JObject CreateVector3DPayload(Data.Value.Vector3D value)
 		{
 			return new JObject
@@ -1461,6 +1826,40 @@ namespace Effekseer
 				["y"] = CreateFloatWithRandomPayload(value.Y),
 				["z"] = CreateFloatWithRandomPayload(value.Z),
 				["drawnAs"] = value.DrawnAs.ToString()
+			};
+		}
+
+		static JObject CreateVector4DPayload(Data.Value.Vector4D value)
+		{
+			return new JObject
+			{
+				["x"] = value.X.Value,
+				["y"] = value.Y.Value,
+				["z"] = value.Z.Value,
+				["w"] = value.W.Value
+			};
+		}
+
+		static JObject CreateColorPayload(Data.Value.Color value)
+		{
+			return new JObject
+			{
+				["r"] = value.R.Value,
+				["g"] = value.G.Value,
+				["b"] = value.B.Value,
+				["a"] = value.A.Value,
+				["colorSpace"] = value.ColorSpace.ToString()
+			};
+		}
+
+		static JObject CreatePathReferencePayload(Data.Value.Path value)
+		{
+			var hasValue = !string.IsNullOrEmpty(value.AbsolutePath);
+			return new JObject
+			{
+				["hasValue"] = hasValue,
+				["pathStatus"] = hasValue ? "set_omitted" : "empty",
+				["summary"] = hasValue ? "Path is set but omitted to avoid exposing absolute or workspace-outside paths" : "No path is set"
 			};
 		}
 
