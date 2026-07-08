@@ -34,6 +34,9 @@ namespace Effekseer
 			"export_runtime_effect_to_workspace",
 			"set_node_color_texture_from_workspace_by_automation_id",
 			"set_node_normal_texture_from_workspace_by_automation_id",
+			"clear_node_color_texture_by_automation_id",
+			"clear_node_normal_texture_by_automation_id",
+			"set_node_material_from_workspace_by_automation_id",
 			"add_node_to_selected",
 			"select_node_by_id",
 			"add_node_to_parent",
@@ -384,6 +387,96 @@ namespace Effekseer
 				var before = CreatePathReferencePayload(target);
 				target.SetAbsolutePath(fullPath);
 				var after = CreatePathReferencePayload(target);
+				return CreateOk(command, new JObject
+				{
+					["automationNodeId"] = automationNodeId,
+					["name"] = regularNode.Name.Value,
+					["path"] = workspaceRelativePath,
+					["before"] = before,
+					["after"] = after,
+					["rendererParameters"] = CreateNodeRendererParametersPayload(regularNode, automationNodeId)
+				});
+			}
+
+			if (command == "clear_node_color_texture_by_automation_id")
+			{
+				if (!TryGetWritableDataNode(command, parameters, out var automationNodeId, out var regularNode, out var error))
+				{
+					return CreateError(command, error);
+				}
+
+				var target = regularNode.RendererCommonValues.ColorTexture;
+				var before = CreatePathReferencePayload(target);
+				target.SetAbsolutePath(string.Empty);
+				var after = CreatePathReferencePayload(target);
+				return CreateOk(command, new JObject
+				{
+					["automationNodeId"] = automationNodeId,
+					["name"] = regularNode.Name.Value,
+					["before"] = before,
+					["after"] = after,
+					["rendererParameters"] = CreateNodeRendererParametersPayload(regularNode, automationNodeId)
+				});
+			}
+
+			if (command == "clear_node_normal_texture_by_automation_id")
+			{
+				if (!TryGetWritableDataNode(command, parameters, out var automationNodeId, out var regularNode, out var error))
+				{
+					return CreateError(command, error);
+				}
+
+				var target = regularNode.RendererCommonValues.NormalTexture;
+				var before = CreatePathReferencePayload(target);
+				target.SetAbsolutePath(string.Empty);
+				var after = CreatePathReferencePayload(target);
+				return CreateOk(command, new JObject
+				{
+					["automationNodeId"] = automationNodeId,
+					["name"] = regularNode.Name.Value,
+					["before"] = before,
+					["after"] = after,
+					["rendererParameters"] = CreateNodeRendererParametersPayload(regularNode, automationNodeId)
+				});
+			}
+
+			if (command == "set_node_material_from_workspace_by_automation_id")
+			{
+				if (!TryGetWritableDataNode(command, parameters, out var automationNodeId, out var regularNode, out var error) ||
+					!TryGetStringParameter(parameters, "path", out var path, out error))
+				{
+					return CreateError(command, error);
+				}
+
+				if (!TryValidateWorkspaceMaterialPath(path, out var fullPath, out var workspaceRelativePath, out error))
+				{
+					return CreateError(command, error);
+				}
+
+				var values = regularNode.RendererCommonValues;
+				var before = new JObject
+				{
+					["material"] = CreateEnumPayload(values.Material),
+					["materialFile"] = CreatePathReferencePayload(values.MaterialFile.Path)
+				};
+
+				Command.CommandManager.StartCollection();
+				try
+				{
+					values.Material.SetValue(Data.RendererCommonValues.MaterialType.File);
+					values.MaterialFile.Path.SetAbsolutePath(fullPath);
+				}
+				finally
+				{
+					Command.CommandManager.EndCollection();
+				}
+
+				var after = new JObject
+				{
+					["material"] = CreateEnumPayload(values.Material),
+					["materialFile"] = CreatePathReferencePayload(values.MaterialFile.Path)
+				};
+
 				return CreateOk(command, new JObject
 				{
 					["automationNodeId"] = automationNodeId,
@@ -1384,6 +1477,32 @@ namespace Effekseer
 			if (!File.Exists(fullPath))
 			{
 				error = "texture file is not found";
+				fullPath = null;
+				workspaceRelativePath = null;
+				return false;
+			}
+
+			return true;
+		}
+
+		bool TryValidateWorkspaceMaterialPath(string path, out string fullPath, out string workspaceRelativePath, out string error)
+		{
+			if (!TryValidateWorkspacePath(path, out fullPath, out workspaceRelativePath, out error))
+			{
+				return false;
+			}
+
+			if (!string.Equals(Path.GetExtension(fullPath), ".efkmat", StringComparison.OrdinalIgnoreCase))
+			{
+				error = "path extension must be .efkmat";
+				fullPath = null;
+				workspaceRelativePath = null;
+				return false;
+			}
+
+			if (!File.Exists(fullPath))
+			{
+				error = "material file is not found";
 				fullPath = null;
 				workspaceRelativePath = null;
 				return false;
