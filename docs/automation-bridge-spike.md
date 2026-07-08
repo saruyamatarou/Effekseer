@@ -57,7 +57,7 @@ A separate bridge is smaller for this spike and avoids changing existing network
 
 ## File operation safety design
 
-File/project operations are intentionally not implemented yet. Before adding commands such as project open, project save, or export, the bridge now has an automation workspace root and an internal path validation helper.
+File/project operations are restricted to an explicitly configured automation workspace root. The current implementation supports project save/open for `.efkefc` files only. Runtime export, texture/material import, arbitrary file reads, directory listing, and generic path operations are intentionally not implemented yet.
 
 Workspace root configuration:
 
@@ -74,14 +74,16 @@ $env:EFFEKSEER_AUTOMATION_WORKSPACE = "D:\Documents\GitHub\effekseer-mcp\workspa
 
 Safety policy:
 
-- If the automation workspace is not configured, future file operation commands must return an error.
-- If the configured workspace directory does not exist, future file operation commands must return an error.
+- If the automation workspace is not configured, file operation commands return an error.
+- If the configured workspace directory does not exist, file operation commands return an error.
 - Paths received by the bridge must normalize inside the workspace root.
 - Relative paths are resolved against the workspace root.
 - Absolute paths are accepted only if their normalized form is still under the workspace root.
 - Parent directory traversal segments such as `..` are rejected.
+- Project open/save paths must use the `.efkefc` extension.
 - Success responses should return workspace-relative paths only, not unnecessary absolute local paths.
-- `get_bridge_capabilities` does not advertise file/project commands yet because those commands are not implemented in this phase.
+- `save_project_to_workspace` may create the destination parent directory under the validated workspace path.
+- `open_project_from_workspace` requires the target file to exist.
 
 The intended architecture is double validation: `effekseer-mcp` should validate paths against its own workspace boundary before sending a request, and the Effekseer Automation Bridge should validate again before touching the filesystem. The bridge-side validation is the final editor-side guard and must not trust the MCP client.
 
@@ -104,6 +106,64 @@ Response shape:
 ```
 
 The actual `commands` array contains every allowlisted command supported by the running bridge. MCP smoke tests should call this first and fail early if a required command is missing, which usually means Effekseer.exe is older than the MCP client expects.
+
+### get_workspace_status
+
+Request:
+
+```json
+{"command":"get_workspace_status"}
+```
+
+Response shape when a workspace is configured and exists:
+
+```json
+{"ok":true,"command":"get_workspace_status","result":{"enabled":true,"exists":true}}
+```
+
+Response shape when no workspace was configured:
+
+```json
+{"ok":true,"command":"get_workspace_status","result":{"enabled":false,"exists":false}}
+```
+
+This command intentionally does not return the absolute workspace root.
+
+### save_project_to_workspace
+
+Request:
+
+```json
+{"command":"save_project_to_workspace","params":{"path":"outputs/test.efkefc"}}
+```
+
+The path is validated against the automation workspace. Workspace-relative paths are recommended. Absolute paths are accepted only when their normalized form is inside the configured workspace. The extension must be `.efkefc`. Parent directories under the workspace may be created.
+
+Response shape:
+
+```json
+{"ok":true,"command":"save_project_to_workspace","result":{"path":"outputs/test.efkefc","status":{"running":true,"has_selected_node":true,"selected_node":{"automationNodeId":"0/0","name":"Node","editor_node_id":0,"children_count":0}}}}
+```
+
+The response returns only the workspace-relative path.
+
+### open_project_from_workspace
+
+Request:
+
+```json
+{"command":"open_project_from_workspace","params":{"path":"outputs/test.efkefc"}}
+```
+
+The path is validated against the automation workspace. The extension must be `.efkefc`, and the file must already exist.
+
+Response shape:
+
+```json
+{"ok":true,"command":"open_project_from_workspace","result":{"path":"outputs/test.efkefc","status":{"running":true,"has_selected_node":false,"selected_node":null}}}
+```
+
+The response returns only the workspace-relative path and a `get_status`-style status payload.
 
 ```json
 {"command":"ping"}
@@ -728,6 +788,7 @@ $client.Close()
 - Parameter inspection commands are read-only and expose only allowlisted summary fields/group names.
 - Parameter value inspection commands are read-only and expose only hand-written allowlisted numeric/enum/boolean summaries. They do not perform reflection dumps or arbitrary property-name reads.
 - Parameter write commands are explicitly allowlisted one by one. The current write surface is `set_node_is_rendered_by_automation_id` plus the limited basic numeric write set; there is no generic `set_parameter`.
+- File operation commands are explicitly allowlisted and constrained to the configured automation workspace. They do not return absolute local paths.
 - Responses intentionally avoid absolute paths and local resource paths.
 
 ## Known limitations
@@ -739,3 +800,4 @@ $client.Close()
 - The bridge has no authentication beyond opt-in loopback binding.
 - Parameter value inspection currently covers base, generation/common, location, rotation, and scale summaries only. It does not mutate values and does not expand full FCurve/NURBS data.
 - Parameter write currently covers only `NodeBase.IsRendered`, `CommonValues.MaxGeneration`, `CommonValues.Life`, and fixed location/rotation/scale vectors. Undo/redo should use existing value object command routes, but end-to-end editor smoke testing should keep validating this as the write surface expands.
+- File operations currently cover only `.efkefc` project save/open inside the automation workspace. Runtime export is planned for a later phase.

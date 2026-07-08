@@ -25,9 +25,12 @@ namespace Effekseer
 		static readonly string[] AllowedCommands = new[]
 		{
 			"get_bridge_capabilities",
+			"get_workspace_status",
 			"ping",
 			"get_status",
 			"get_node_tree",
+			"save_project_to_workspace",
+			"open_project_from_workspace",
 			"add_node_to_selected",
 			"select_node_by_id",
 			"add_node_to_parent",
@@ -228,6 +231,11 @@ namespace Effekseer
 				return CreateOk(command, CreateBridgeCapabilitiesPayload());
 			}
 
+			if (command == "get_workspace_status")
+			{
+				return CreateOk(command, CreateWorkspaceStatusPayload());
+			}
+
 			if (command == "ping")
 			{
 				return CreateOk(command, new JObject
@@ -244,6 +252,52 @@ namespace Effekseer
 			if (command == "get_node_tree")
 			{
 				return CreateOk(command, CreateNodeTreePayload());
+			}
+
+			if (command == "save_project_to_workspace")
+			{
+				if (!TryGetStringParameter(parameters, "path", out var path, out var error))
+				{
+					return CreateError(command, error);
+				}
+
+				if (!TryValidateWorkspaceProjectPath(path, mustExist: false, out var fullPath, out var workspaceRelativePath, out error))
+				{
+					return CreateError(command, error);
+				}
+
+				var parentDirectory = Path.GetDirectoryName(fullPath);
+				if (!string.IsNullOrEmpty(parentDirectory))
+				{
+					Directory.CreateDirectory(parentDirectory);
+				}
+
+				Core.SaveTo(fullPath);
+				return CreateOk(command, new JObject
+				{
+					["path"] = workspaceRelativePath,
+					["status"] = CreateStatusPayload()
+				});
+			}
+
+			if (command == "open_project_from_workspace")
+			{
+				if (!TryGetStringParameter(parameters, "path", out var path, out var error))
+				{
+					return CreateError(command, error);
+				}
+
+				if (!TryValidateWorkspaceProjectPath(path, mustExist: true, out var fullPath, out var workspaceRelativePath, out error))
+				{
+					return CreateError(command, error);
+				}
+
+				Core.LoadFrom(fullPath);
+				return CreateOk(command, new JObject
+				{
+					["path"] = workspaceRelativePath,
+					["status"] = CreateStatusPayload()
+				});
 			}
 
 			if (command == "play_viewer")
@@ -961,6 +1015,32 @@ namespace Effekseer
 			return true;
 		}
 
+		bool TryValidateWorkspaceProjectPath(string path, bool mustExist, out string fullPath, out string workspaceRelativePath, out string error)
+		{
+			if (!TryValidateWorkspacePath(path, out fullPath, out workspaceRelativePath, out error))
+			{
+				return false;
+			}
+
+			if (!string.Equals(Path.GetExtension(fullPath), ".efkefc", StringComparison.OrdinalIgnoreCase))
+			{
+				error = "path extension must be .efkefc";
+				fullPath = null;
+				workspaceRelativePath = null;
+				return false;
+			}
+
+			if (mustExist && !File.Exists(fullPath))
+			{
+				error = "project file is not found";
+				fullPath = null;
+				workspaceRelativePath = null;
+				return false;
+			}
+
+			return true;
+		}
+
 		static bool HasParentDirectoryTraversal(string path)
 		{
 			var parts = path.Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries);
@@ -1016,6 +1096,15 @@ namespace Effekseer
 				["running"] = true,
 				["has_selected_node"] = selected != null,
 				["selected_node"] = selected != null ? CreateNodePayload(selected) : null
+			};
+		}
+
+		JObject CreateWorkspaceStatusPayload()
+		{
+			return new JObject
+			{
+				["enabled"] = !string.IsNullOrEmpty(automationWorkspaceRoot),
+				["exists"] = !string.IsNullOrEmpty(automationWorkspaceRoot) && Directory.Exists(automationWorkspaceRoot)
 			};
 		}
 
