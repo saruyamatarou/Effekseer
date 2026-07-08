@@ -194,7 +194,8 @@ namespace Effekseer
 				command == "get_node_parameter_groups_by_automation_id" ||
 				command == "get_node_base_parameters_by_automation_id" ||
 				command == "get_node_generation_parameters_by_automation_id" ||
-				command == "get_node_transform_parameters_by_automation_id";
+				command == "get_node_transform_parameters_by_automation_id" ||
+				command == "set_node_is_rendered_by_automation_id";
 		}
 
 		static JObject ExecuteOnMainThread(string command, JObject parameters)
@@ -325,6 +326,38 @@ namespace Effekseer
 				}
 
 				return CreateOk(command, CreateNodeTransformParametersPayload(regularNode, automationNodeId));
+			}
+
+			if (command == "set_node_is_rendered_by_automation_id")
+			{
+				if (!TryGetStringParameter(parameters, "automationNodeId", out var automationNodeId, out var error))
+				{
+					return CreateError(command, error);
+				}
+
+				if (!TryGetBooleanParameter(parameters, "isRendered", out var isRendered, out error))
+				{
+					return CreateError(command, error);
+				}
+
+				var node = FindNodeByAutomationNodeId(automationNodeId, out error);
+				if (node == null)
+				{
+					return CreateError(command, error);
+				}
+
+				var before = node.IsRendered.Value;
+				node.IsRendered.SetValue(isRendered);
+				var after = node.IsRendered.Value;
+
+				return CreateOk(command, new JObject
+				{
+					["automationNodeId"] = automationNodeId,
+					["name"] = node.Name.Value,
+					["before"] = before,
+					["after"] = after,
+					["baseParameters"] = CreateNodeBaseParametersPayload(node, automationNodeId)
+				});
 			}
 
 			if (command == "select_node_by_id")
@@ -1113,6 +1146,27 @@ namespace Effekseer
 			}
 
 			value = parameters.Value<string>(name);
+			return true;
+		}
+
+		static bool TryGetBooleanParameter(JObject parameters, string name, out bool value, out string error)
+		{
+			value = false;
+			error = null;
+
+			if (parameters == null || parameters[name] == null)
+			{
+				error = $"params.{name} is required";
+				return false;
+			}
+
+			if (parameters[name].Type != JTokenType.Boolean)
+			{
+				error = $"params.{name} must be a boolean";
+				return false;
+			}
+
+			value = parameters.Value<bool>(name);
 			return true;
 		}
 

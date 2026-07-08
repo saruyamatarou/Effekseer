@@ -511,6 +511,40 @@ The actual response includes the same allowlisted value summaries for PVA/easing
 
 Parameter write remains a future phase. A later write API should use stable allowlisted parameter IDs, validation rules, and undo-aware editor commands instead of accepting arbitrary property paths.
 
+## Parameter write commands
+
+This is the first minimal parameter write spike. It is intentionally limited to one boolean field, `NodeBase.IsRendered`, so MCP/AI clients can verify a safe write path without introducing a generic parameter setter.
+
+The bridge still does not support `set_parameter`, arbitrary parameter names, reflection writes, texture replacement, file open/save, or script execution. Write commands run on the main/UI thread through `AutomationBridge.Update()`.
+
+Investigation notes:
+
+- The node tree GUI toggles visibility through `Node.IsRendered.SetValue(value)` in `GUI/Dock/NodeTreeView.cs`.
+- `Data.Value.Boolean.SetValue(bool)` creates a `Command.DelegateCommand` and calls `Command.CommandManager.Execute(cmd)`.
+- The bridge uses the same `node.IsRendered.SetValue(isRendered)` route, so this spike is expected to participate in Effekseer's undo/redo command stack. Runtime smoke testing should still verify the exact editor behavior.
+
+### set_node_is_rendered_by_automation_id
+
+Request:
+
+```json
+{"command":"set_node_is_rendered_by_automation_id","params":{"automationNodeId":"0/1","isRendered":false}}
+```
+
+`params.isRendered` must be a JSON boolean. Strings, numbers, null, and missing values are rejected.
+
+Response shape:
+
+```json
+{"ok":true,"command":"set_node_is_rendered_by_automation_id","result":{"automationNodeId":"0/1","name":"Node","before":true,"after":false,"baseParameters":{"automationNodeId":"0/1","name":"Node","isRendered":false,"childCount":0,"nodeType":"node","className":"Node"}}}
+```
+
+Invalid type example:
+
+```json
+{"ok":false,"command":"set_node_is_rendered_by_automation_id","error":"params.isRendered must be a boolean"}
+```
+
 ## Usage examples
 
 Start Effekseer:
@@ -558,6 +592,7 @@ $client.Close()
 - Viewer playback commands run from `AutomationBridge.Update()` on the main/UI thread and call existing editor command methods; they do not click or automate GUI controls.
 - Parameter inspection commands are read-only and expose only allowlisted summary fields/group names.
 - Parameter value inspection commands are read-only and expose only hand-written allowlisted numeric/enum/boolean summaries. They do not perform reflection dumps or arbitrary property-name reads.
+- Parameter write commands are explicitly allowlisted one by one. The current write surface is only `set_node_is_rendered_by_automation_id`; there is no generic `set_parameter`.
 - Responses intentionally avoid absolute paths and local resource paths.
 
 ## Known limitations
@@ -568,3 +603,4 @@ $client.Close()
 - Node names accepted through the bridge are limited to 128 characters.
 - The bridge has no authentication beyond opt-in loopback binding.
 - Parameter value inspection currently covers base, generation/common, location, rotation, and scale summaries only. It does not mutate values and does not expand full FCurve/NURBS data.
+- Parameter write currently covers only `NodeBase.IsRendered`. Undo/redo should use the existing `Value.Boolean.SetValue` command route, but end-to-end editor smoke testing should keep validating this as the write surface expands.
