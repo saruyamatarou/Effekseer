@@ -675,6 +675,119 @@ This command reads `RendererCommonValues`: material type, material file referenc
 
 Parameter write remains a separate phase. Write APIs should continue to use stable allowlisted parameter IDs, validation rules, and undo-aware editor commands instead of accepting arbitrary property paths.
 
+## Drawing / Renderer write commands
+
+Drawing and renderer write commands are limited to file-reference-free visual edits. They run on the main/UI thread through `AutomationBridge.Update()` and use existing `Value.SetValue(...)` / `CommandManager` paths. They do not accept arbitrary property names, enum integer IDs, reflection writes, or texture/material/model paths.
+
+Supported `alphaBlend` strings:
+
+- `opacity`
+- `blend`
+- `add`
+- `sub` or `subtract`
+- `mul` or `multiply`
+
+Supported `rendererType` strings:
+
+- `none`
+- `sprite`
+- `ribbon`
+- `ring`
+- `track`
+- `model`
+
+All RGBA components must be JSON integers from `0` to `255`. Boolean values are rejected; they are not treated as integers.
+
+### set_node_color_all_fixed_rgba_by_automation_id
+
+Request:
+
+```json
+{"command":"set_node_color_all_fixed_rgba_by_automation_id","params":{"automationNodeId":"0/1","r":255,"g":128,"b":64,"a":255}}
+```
+
+This sets `DrawingValues.ColorAll.Type` to `Fixed` and updates `ColorAll.Fixed`.
+
+Response shape:
+
+```json
+{"ok":true,"command":"set_node_color_all_fixed_rgba_by_automation_id","result":{"automationNodeId":"0/1","name":"Node","before":{"type":{"value":"Fixed","valueId":0},"fixed":{"r":255,"g":255,"b":255,"a":255,"colorSpace":"RGBA"}},"after":{"type":{"value":"Fixed","valueId":0},"fixed":{"r":255,"g":128,"b":64,"a":255,"colorSpace":"RGBA"}},"drawingParameters":{}}}
+```
+
+### set_node_sprite_corner_colors_fixed_rgba_by_automation_id
+
+Request:
+
+```json
+{"command":"set_node_sprite_corner_colors_fixed_rgba_by_automation_id","params":{"automationNodeId":"0/1","lowerLeft":{"r":255,"g":0,"b":0,"a":255},"lowerRight":{"r":0,"g":255,"b":0,"a":255},"upperLeft":{"r":0,"g":0,"b":255,"a":255},"upperRight":{"r":255,"g":255,"b":255,"a":255}}}
+```
+
+This command requires the target node's current renderer type to be `sprite`. It sets `DrawingValues.Sprite.Color` to `Fixed` and updates all four sprite corner colors inside one command collection.
+
+Response shape:
+
+```json
+{"ok":true,"command":"set_node_sprite_corner_colors_fixed_rgba_by_automation_id","result":{"automationNodeId":"0/1","name":"Node","before":{"colorType":{"value":"Default","valueId":0}},"after":{"colorType":{"value":"Fixed","valueId":1},"fixedColors":{"lowerLeft":{"r":255,"g":0,"b":0,"a":255,"colorSpace":"RGBA"}}},"drawingParameters":{}}}
+```
+
+### set_node_alpha_blend_by_automation_id
+
+Request:
+
+```json
+{"command":"set_node_alpha_blend_by_automation_id","params":{"automationNodeId":"0/1","alphaBlend":"add"}}
+```
+
+Response shape:
+
+```json
+{"ok":true,"command":"set_node_alpha_blend_by_automation_id","result":{"automationNodeId":"0/1","name":"Node","before":{"value":"Blend","valueId":1},"after":{"value":"Add","valueId":2},"rendererParameters":{}}}
+```
+
+### set_node_z_write_by_automation_id
+
+Request:
+
+```json
+{"command":"set_node_z_write_by_automation_id","params":{"automationNodeId":"0/1","zWrite":false}}
+```
+
+Response shape:
+
+```json
+{"ok":true,"command":"set_node_z_write_by_automation_id","result":{"automationNodeId":"0/1","name":"Node","before":true,"after":false,"rendererParameters":{}}}
+```
+
+### set_node_z_test_by_automation_id
+
+Request:
+
+```json
+{"command":"set_node_z_test_by_automation_id","params":{"automationNodeId":"0/1","zTest":true}}
+```
+
+Response shape:
+
+```json
+{"ok":true,"command":"set_node_z_test_by_automation_id","result":{"automationNodeId":"0/1","name":"Node","before":false,"after":true,"rendererParameters":{}}}
+```
+
+### set_node_renderer_type_by_automation_id
+
+Request:
+
+```json
+{"command":"set_node_renderer_type_by_automation_id","params":{"automationNodeId":"0/1","rendererType":"sprite"}}
+```
+
+Response shape:
+
+```json
+{"ok":true,"command":"set_node_renderer_type_by_automation_id","result":{"automationNodeId":"0/1","name":"Node","before":{"value":"None","valueId":0},"after":{"value":"Sprite","valueId":2},"drawingParameters":{}}}
+```
+
+Texture assignment, material file assignment, model file assignment, procedural model editing, and generic renderer property writes are intentionally deferred to a later phase with a workspace-aware asset contract.
+
 ## Parameter write commands
 
 This started as a minimal parameter write spike for one boolean field, `NodeBase.IsRendered`. The bridge now includes a small basic write set for hand-written, allowlisted numeric parameters. It still intentionally avoids a generic parameter setter.
@@ -843,7 +956,8 @@ $client.Close()
 - Parameter inspection commands are read-only and expose only allowlisted summary fields/group names.
 - Parameter value inspection commands are read-only and expose only hand-written allowlisted numeric/enum/boolean/drawing/renderer summaries. They do not perform reflection dumps or arbitrary property-name reads.
 - Drawing and renderer inspection commands never return absolute texture, material, model, or other local resource paths. Path fields are reported only as empty or set-but-omitted summaries in this phase.
-- Parameter write commands are explicitly allowlisted one by one. The current write surface is `set_node_is_rendered_by_automation_id` plus the limited basic numeric write set; there is no generic `set_parameter`.
+- Parameter write commands are explicitly allowlisted one by one. The current write surface is `set_node_is_rendered_by_automation_id`, the limited basic numeric write set, and the file-reference-free drawing/renderer write set; there is no generic `set_parameter`.
+- Drawing/renderer writes accept string allowlists for enums and bounded integer RGBA values only. They do not accept enum integer IDs, arbitrary property names, reflection writes, or texture/material/model path assignment.
 - File operation commands are explicitly allowlisted and constrained to the configured automation workspace. They do not return absolute local paths.
 - Responses intentionally avoid absolute paths and local resource paths.
 
@@ -857,4 +971,5 @@ $client.Close()
 - Parameter value inspection currently covers base, generation/common, location, rotation, scale, drawing, and renderer-common summaries. It does not mutate values and does not expand full FCurve/NURBS/color-gradient/procedural-model data.
 - Texture/material/model references are currently path summaries only. A future asset inspection phase can return workspace-relative paths after defining a safe asset catalog contract.
 - Parameter write currently covers only `NodeBase.IsRendered`, `CommonValues.MaxGeneration`, `CommonValues.Life`, and fixed location/rotation/scale vectors. Undo/redo should use existing value object command routes, but end-to-end editor smoke testing should keep validating this as the write surface expands.
+- Drawing/renderer write currently covers `ColorAll.Fixed`, sprite fixed corner colors, renderer-common alpha blend, Z write/test, and renderer type. It does not assign texture/material/model files.
 - File operations currently cover only `.efkefc` project save/open and `.efk` runtime binary export inside the automation workspace. glTF/glb export and asset import are planned for later phases.

@@ -61,6 +61,12 @@ namespace Effekseer
 			"set_node_fixed_location_by_automation_id",
 			"set_node_fixed_rotation_by_automation_id",
 			"set_node_fixed_scale_by_automation_id",
+			"set_node_color_all_fixed_rgba_by_automation_id",
+			"set_node_sprite_corner_colors_fixed_rgba_by_automation_id",
+			"set_node_alpha_blend_by_automation_id",
+			"set_node_z_write_by_automation_id",
+			"set_node_z_test_by_automation_id",
+			"set_node_renderer_type_by_automation_id",
 		};
 		readonly int port;
 		readonly string automationWorkspaceRoot;
@@ -645,6 +651,175 @@ namespace Effekseer
 					["before"] = before,
 					["after"] = after,
 					["transformParameters"] = CreateNodeTransformParametersPayload(regularNode, automationNodeId)
+				});
+			}
+
+			if (command == "set_node_color_all_fixed_rgba_by_automation_id")
+			{
+				if (!TryGetWritableDataNode(command, parameters, out var automationNodeId, out var regularNode, out var error) ||
+					!TryGetRgbaParameters(parameters, out var r, out var g, out var b, out var a, out error))
+				{
+					return CreateError(command, error);
+				}
+
+				var target = regularNode.DrawingValues.ColorAll;
+				var before = CreateStandardColorPayload(target);
+				Command.CommandManager.StartCollection();
+				try
+				{
+					target.Type.SetValue(Data.StandardColorType.Fixed);
+					target.Fixed.SetValue(r, g, b, a);
+				}
+				finally
+				{
+					Command.CommandManager.EndCollection();
+				}
+
+				var after = CreateStandardColorPayload(target);
+				return CreateOk(command, new JObject
+				{
+					["automationNodeId"] = automationNodeId,
+					["name"] = regularNode.Name.Value,
+					["before"] = before,
+					["after"] = after,
+					["drawingParameters"] = CreateNodeDrawingParametersPayload(regularNode, automationNodeId)
+				});
+			}
+
+			if (command == "set_node_sprite_corner_colors_fixed_rgba_by_automation_id")
+			{
+				if (!TryGetWritableDataNode(command, parameters, out var automationNodeId, out var regularNode, out var error))
+				{
+					return CreateError(command, error);
+				}
+
+				if (regularNode.DrawingValues.Type.Value != Data.RendererValues.ParamaterType.Sprite)
+				{
+					return CreateError(command, "rendererType must be sprite to set sprite corner colors");
+				}
+
+				if (!TryGetRgbaObjectParameter(parameters, "lowerLeft", out var lowerLeft, out error) ||
+					!TryGetRgbaObjectParameter(parameters, "lowerRight", out var lowerRight, out error) ||
+					!TryGetRgbaObjectParameter(parameters, "upperLeft", out var upperLeft, out error) ||
+					!TryGetRgbaObjectParameter(parameters, "upperRight", out var upperRight, out error))
+				{
+					return CreateError(command, error);
+				}
+
+				var sprite = regularNode.DrawingValues.Sprite;
+				var before = CreateSpriteDrawingPayload(sprite);
+				Command.CommandManager.StartCollection();
+				try
+				{
+					sprite.Color.SetValue(Data.RendererValues.SpriteParamater.ColorType.Fixed);
+					SetColor(sprite.Color_Fixed_LL, lowerLeft);
+					SetColor(sprite.Color_Fixed_LR, lowerRight);
+					SetColor(sprite.Color_Fixed_UL, upperLeft);
+					SetColor(sprite.Color_Fixed_UR, upperRight);
+				}
+				finally
+				{
+					Command.CommandManager.EndCollection();
+				}
+
+				var after = CreateSpriteDrawingPayload(sprite);
+				return CreateOk(command, new JObject
+				{
+					["automationNodeId"] = automationNodeId,
+					["name"] = regularNode.Name.Value,
+					["before"] = before,
+					["after"] = after,
+					["drawingParameters"] = CreateNodeDrawingParametersPayload(regularNode, automationNodeId)
+				});
+			}
+
+			if (command == "set_node_alpha_blend_by_automation_id")
+			{
+				if (!TryGetWritableDataNode(command, parameters, out var automationNodeId, out var regularNode, out var error) ||
+					!TryGetStringParameter(parameters, "alphaBlend", out var alphaBlendText, out error) ||
+					!TryParseAlphaBlend(alphaBlendText, out var alphaBlend, out error))
+				{
+					return CreateError(command, error);
+				}
+
+				var target = regularNode.RendererCommonValues.AlphaBlend;
+				var before = CreateEnumPayload(target);
+				target.SetValue(alphaBlend);
+				var after = CreateEnumPayload(target);
+				return CreateOk(command, new JObject
+				{
+					["automationNodeId"] = automationNodeId,
+					["name"] = regularNode.Name.Value,
+					["before"] = before,
+					["after"] = after,
+					["rendererParameters"] = CreateNodeRendererParametersPayload(regularNode, automationNodeId)
+				});
+			}
+
+			if (command == "set_node_z_write_by_automation_id")
+			{
+				if (!TryGetWritableDataNode(command, parameters, out var automationNodeId, out var regularNode, out var error) ||
+					!TryGetBooleanParameter(parameters, "zWrite", out var zWrite, out error))
+				{
+					return CreateError(command, error);
+				}
+
+				var target = regularNode.RendererCommonValues.ZWrite;
+				var before = target.Value;
+				target.SetValue(zWrite);
+				var after = target.Value;
+				return CreateOk(command, new JObject
+				{
+					["automationNodeId"] = automationNodeId,
+					["name"] = regularNode.Name.Value,
+					["before"] = before,
+					["after"] = after,
+					["rendererParameters"] = CreateNodeRendererParametersPayload(regularNode, automationNodeId)
+				});
+			}
+
+			if (command == "set_node_z_test_by_automation_id")
+			{
+				if (!TryGetWritableDataNode(command, parameters, out var automationNodeId, out var regularNode, out var error) ||
+					!TryGetBooleanParameter(parameters, "zTest", out var zTest, out error))
+				{
+					return CreateError(command, error);
+				}
+
+				var target = regularNode.RendererCommonValues.ZTest;
+				var before = target.Value;
+				target.SetValue(zTest);
+				var after = target.Value;
+				return CreateOk(command, new JObject
+				{
+					["automationNodeId"] = automationNodeId,
+					["name"] = regularNode.Name.Value,
+					["before"] = before,
+					["after"] = after,
+					["rendererParameters"] = CreateNodeRendererParametersPayload(regularNode, automationNodeId)
+				});
+			}
+
+			if (command == "set_node_renderer_type_by_automation_id")
+			{
+				if (!TryGetWritableDataNode(command, parameters, out var automationNodeId, out var regularNode, out var error) ||
+					!TryGetStringParameter(parameters, "rendererType", out var rendererTypeText, out error) ||
+					!TryParseRendererType(rendererTypeText, out var rendererType, out error))
+				{
+					return CreateError(command, error);
+				}
+
+				var target = regularNode.DrawingValues.Type;
+				var before = CreateEnumPayload(target);
+				target.SetValue(rendererType);
+				var after = CreateEnumPayload(target);
+				return CreateOk(command, new JObject
+				{
+					["automationNodeId"] = automationNodeId,
+					["name"] = regularNode.Name.Value,
+					["before"] = before,
+					["after"] = after,
+					["drawingParameters"] = CreateNodeDrawingParametersPayload(regularNode, automationNodeId)
 				});
 			}
 
@@ -1965,6 +2140,112 @@ namespace Effekseer
 				TryGetFiniteFloatParameter(parameters, "z", -MaxAutomationFloatAbs, MaxAutomationFloatAbs, out z, out error);
 		}
 
+		struct Rgba
+		{
+			public int R;
+			public int G;
+			public int B;
+			public int A;
+		}
+
+		static bool TryGetRgbaParameters(JObject parameters, out int r, out int g, out int b, out int a, out string error)
+		{
+			r = 0;
+			g = 0;
+			b = 0;
+			a = 0;
+
+			return TryGetBoundedIntParameter(parameters, "r", 0, 255, out r, out error) &&
+				TryGetBoundedIntParameter(parameters, "g", 0, 255, out g, out error) &&
+				TryGetBoundedIntParameter(parameters, "b", 0, 255, out b, out error) &&
+				TryGetBoundedIntParameter(parameters, "a", 0, 255, out a, out error);
+		}
+
+		static bool TryGetRgbaObjectParameter(JObject parameters, string name, out Rgba color, out string error)
+		{
+			color = new Rgba();
+			error = null;
+
+			if (parameters == null || parameters[name] == null)
+			{
+				error = $"params.{name} is required";
+				return false;
+			}
+
+			if (parameters[name].Type != JTokenType.Object)
+			{
+				error = $"params.{name} must be an object";
+				return false;
+			}
+
+			var obj = (JObject)parameters[name];
+			return TryGetBoundedIntParameter(obj, "r", 0, 255, out color.R, out error) &&
+				TryGetBoundedIntParameter(obj, "g", 0, 255, out color.G, out error) &&
+				TryGetBoundedIntParameter(obj, "b", 0, 255, out color.B, out error) &&
+				TryGetBoundedIntParameter(obj, "a", 0, 255, out color.A, out error);
+		}
+
+		static bool TryParseAlphaBlend(string value, out Data.AlphaBlendType alphaBlend, out string error)
+		{
+			alphaBlend = Data.AlphaBlendType.Blend;
+			error = null;
+
+			switch ((value ?? string.Empty).Trim().ToLowerInvariant())
+			{
+				case "opacity":
+					alphaBlend = Data.AlphaBlendType.Opacity;
+					return true;
+				case "blend":
+					alphaBlend = Data.AlphaBlendType.Blend;
+					return true;
+				case "add":
+					alphaBlend = Data.AlphaBlendType.Add;
+					return true;
+				case "sub":
+				case "subtract":
+					alphaBlend = Data.AlphaBlendType.Sub;
+					return true;
+				case "mul":
+				case "multiply":
+					alphaBlend = Data.AlphaBlendType.Mul;
+					return true;
+				default:
+					error = "params.alphaBlend must be one of opacity, blend, add, sub, mul";
+					return false;
+			}
+		}
+
+		static bool TryParseRendererType(string value, out Data.RendererValues.ParamaterType rendererType, out string error)
+		{
+			rendererType = Data.RendererValues.ParamaterType.Sprite;
+			error = null;
+
+			switch ((value ?? string.Empty).Trim().ToLowerInvariant())
+			{
+				case "none":
+					rendererType = Data.RendererValues.ParamaterType.None;
+					return true;
+				case "sprite":
+					rendererType = Data.RendererValues.ParamaterType.Sprite;
+					return true;
+				case "ribbon":
+					rendererType = Data.RendererValues.ParamaterType.Ribbon;
+					return true;
+				case "ring":
+					rendererType = Data.RendererValues.ParamaterType.Ring;
+					return true;
+				case "track":
+					rendererType = Data.RendererValues.ParamaterType.Track;
+					return true;
+				case "model":
+					rendererType = Data.RendererValues.ParamaterType.Model;
+					return true;
+				default:
+					error = "params.rendererType must be one of none, sprite, ribbon, ring, track, model";
+					return false;
+			}
+		}
+
 		static void SetVector3D(Data.Value.Vector3D value, float x, float y, float z)
 		{
 			Command.CommandManager.StartCollection();
@@ -1978,6 +2259,11 @@ namespace Effekseer
 			{
 				Command.CommandManager.EndCollection();
 			}
+		}
+
+		static void SetColor(Data.Value.Color value, Rgba color)
+		{
+			value.SetValue(color.R, color.G, color.B, color.A);
 		}
 
 		static void SetIntWithRandom(Data.Value.IntWithRandom value, int center, int min, int max)
