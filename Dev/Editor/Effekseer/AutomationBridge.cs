@@ -180,7 +180,12 @@ namespace Effekseer
 				command == "rename_node" ||
 				command == "select_node_by_automation_id" ||
 				command == "add_node_to_parent_by_automation_id" ||
-				command == "rename_node_by_automation_id";
+				command == "rename_node_by_automation_id" ||
+				command == "remove_node_by_automation_id" ||
+				command == "duplicate_node_by_automation_id" ||
+				command == "insert_parent_node_by_automation_id" ||
+				command == "undo" ||
+				command == "redo";
 		}
 
 		static JObject ExecuteOnMainThread(string command, JObject parameters)
@@ -377,6 +382,183 @@ namespace Effekseer
 				return CreateOk(command, new JObject
 				{
 					["renamed_node"] = CreateNodePayload(node, automationNodeId)
+				});
+			}
+
+			if (command == "remove_node_by_automation_id")
+			{
+				if (!TryGetStringParameter(parameters, "automationNodeId", out var automationNodeId, out var error))
+				{
+					return CreateError(command, error);
+				}
+
+				var node = FindNodeByAutomationNodeId(automationNodeId, out error);
+				if (node == null)
+				{
+					return CreateError(command, error);
+				}
+
+				if (node.Parent == null)
+				{
+					return CreateError(command, "root node cannot be removed");
+				}
+
+				if (!(node is Data.Node removableNode))
+				{
+					return CreateError(command, "node cannot be removed");
+				}
+
+				var parent = node.Parent;
+				var parentAutomationNodeId = FindAutomationNodeId(parent);
+				var removedNodePayload = CreateNodePayload(node, automationNodeId);
+				parent.RemoveChild(removableNode);
+
+				return CreateOk(command, new JObject
+				{
+					["parent_node"] = CreateNodePayload(parent, parentAutomationNodeId),
+					["removed_node"] = removedNodePayload
+				});
+			}
+
+			if (command == "duplicate_node_by_automation_id")
+			{
+				if (!TryGetStringParameter(parameters, "automationNodeId", out var automationNodeId, out var error))
+				{
+					return CreateError(command, error);
+				}
+
+				var node = FindNodeByAutomationNodeId(automationNodeId, out error);
+				if (node == null)
+				{
+					return CreateError(command, error);
+				}
+
+				if (node.Parent == null)
+				{
+					return CreateError(command, "root node cannot be duplicated");
+				}
+
+				var parent = node.Parent;
+				if (parent.GetLayerNumber() + node.GetDeepestLayerNumberInChildren() > Constant.NodeLayerLimit)
+				{
+					return CreateError(command, "node layer limit exceeded");
+				}
+
+				var name = parameters.Value<string>("name");
+				if (name != null && !IsValidNodeName(name, out error))
+				{
+					return CreateError(command, error);
+				}
+
+				var data = Core.Copy(node);
+				if (!Core.IsValidXml(data))
+				{
+					return CreateError(command, "failed to copy node");
+				}
+
+				Data.Node duplicated = null;
+				Command.CommandManager.StartCollection();
+				try
+				{
+					duplicated = parent.AddChild();
+					Core.Paste(duplicated, data);
+					if (name != null)
+					{
+						duplicated.Name.Value = name;
+					}
+				}
+				finally
+				{
+					Command.CommandManager.EndCollection();
+				}
+
+				if (Core.Root.GetDeepestLayerNumberInChildren() > Constant.NodeLayerLimit)
+				{
+					Command.CommandManager.Undo(true);
+					return CreateError(command, "node layer limit exceeded");
+				}
+
+				var parentAutomationNodeId = FindAutomationNodeId(parent);
+				var duplicatedAutomationNodeId = CreateChildAutomationNodeId(parentAutomationNodeId, parent.Children.Count - 1);
+				return CreateOk(command, new JObject
+				{
+					["parent_node"] = CreateNodePayload(parent, parentAutomationNodeId),
+					["duplicated_node"] = CreateNodePayload(duplicated, duplicatedAutomationNodeId)
+				});
+			}
+
+			if (command == "insert_parent_node_by_automation_id")
+			{
+				if (!TryGetStringParameter(parameters, "automationNodeId", out var automationNodeId, out var error))
+				{
+					return CreateError(command, error);
+				}
+
+				var node = FindNodeByAutomationNodeId(automationNodeId, out error);
+				if (node == null)
+				{
+					return CreateError(command, error);
+				}
+
+				if (node.Parent == null)
+				{
+					return CreateError(command, "root node cannot be wrapped");
+				}
+
+				if (Core.Root.GetDeepestLayerNumberInChildren() >= Constant.NodeLayerLimit)
+				{
+					return CreateError(command, "node layer limit exceeded");
+				}
+
+				var name = parameters.Value<string>("name");
+				if (name != null && !IsValidNodeName(name, out error))
+				{
+					return CreateError(command, error);
+				}
+
+				var inserted = node.InsertParent();
+				if (inserted == null)
+				{
+					return CreateError(command, "failed to insert parent node");
+				}
+
+				if (name != null)
+				{
+					inserted.Name.Value = name;
+				}
+
+				return CreateOk(command, new JObject
+				{
+					["inserted_node"] = CreateNodePayload(inserted, automationNodeId),
+					["moved_node"] = CreateNodePayload(node, CreateChildAutomationNodeId(automationNodeId, 0))
+				});
+			}
+
+			if (command == "undo")
+			{
+				var succeeded = Command.CommandManager.Undo();
+				if (!succeeded)
+				{
+					return CreateError(command, "nothing to undo");
+				}
+
+				return CreateOk(command, new JObject
+				{
+					["status"] = CreateStatusPayload()
+				});
+			}
+
+			if (command == "redo")
+			{
+				var succeeded = Command.CommandManager.Redo();
+				if (!succeeded)
+				{
+					return CreateError(command, "nothing to redo");
+				}
+
+				return CreateOk(command, new JObject
+				{
+					["status"] = CreateStatusPayload()
 				});
 			}
 

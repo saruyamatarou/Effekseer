@@ -8,7 +8,7 @@ This spike adds a minimal, opt-in automation bridge for controlling a running Ef
 - Binds only to `127.0.0.1`.
 - Enabled by `--automation-port <port>` or `EFFEKSEER_AUTOMATION_PORT=<port>`.
 - Uses JSON-line TCP: one JSON object per line, one JSON object response per line.
-- Allows only explicit commands: `ping`, `get_status`, `get_node_tree`, `add_node_to_selected`, `select_node_by_id`, `add_node_to_parent`, `rename_node`, `select_node_by_automation_id`, `add_node_to_parent_by_automation_id`, and `rename_node_by_automation_id`.
+- Allows only explicit commands: `ping`, `get_status`, `get_node_tree`, `add_node_to_selected`, `select_node_by_id`, `add_node_to_parent`, `rename_node`, `select_node_by_automation_id`, `add_node_to_parent_by_automation_id`, `rename_node_by_automation_id`, `remove_node_by_automation_id`, `duplicate_node_by_automation_id`, `insert_parent_node_by_automation_id`, `undo`, and `redo`.
 - Does not execute shell commands or arbitrary C# code.
 - Does not use UI clicks or GUI automation.
 
@@ -71,7 +71,7 @@ Requests support an optional `params` object. Existing requests without `params`
 - Root's second child: `0/1`
 - First child under `0/1`: `0/1/0`
 
-Because this is a path ID, clients should refresh it with `get_node_tree` after structural edits that can change sibling indexes.
+Because this is a path ID, clients should refresh it with `get_node_tree` after structural edits that can change sibling indexes. This includes add, remove, duplicate, and insert-parent operations.
 
 ### ping
 
@@ -253,6 +253,98 @@ Response shape:
 {"ok":true,"command":"rename_node_by_automation_id","result":{"renamed_node":{"automationNodeId":"0/0","name":"Renamed","editor_node_id":0,"children_count":0}}}
 ```
 
+### remove_node_by_automation_id
+
+Request:
+
+```json
+{"command":"remove_node_by_automation_id","params":{"automationNodeId":"0/1"}}
+```
+
+The root node cannot be removed. The response includes the parent after removal and a payload captured for the node before removal:
+
+```json
+{"ok":true,"command":"remove_node_by_automation_id","result":{"parent_node":{"automationNodeId":"0","name":"Root","editor_node_id":0,"children_count":1},"removed_node":{"automationNodeId":"0/1","name":"Node","editor_node_id":0,"children_count":0}}}
+```
+
+After removal, the removed node's `automationNodeId` is invalid, and sibling path indexes may have changed. Call `get_node_tree` before issuing more path-based edits.
+
+### duplicate_node_by_automation_id
+
+Request:
+
+```json
+{"command":"duplicate_node_by_automation_id","params":{"automationNodeId":"0/1","name":"Copy"}}
+```
+
+The root node cannot be duplicated. Duplication uses Effekseer's existing internal `Core.Copy(node)` and `Core.Paste(newNode, data)` XML copy/paste mechanism, not UI clipboard automation. The duplicate is appended to the same parent. `params.name` is optional; if present, it must be non-empty and 128 characters or less.
+
+Response shape:
+
+```json
+{"ok":true,"command":"duplicate_node_by_automation_id","result":{"parent_node":{"automationNodeId":"0","name":"Root","editor_node_id":0,"children_count":3},"duplicated_node":{"automationNodeId":"0/2","name":"Copy","editor_node_id":0,"children_count":0}}}
+```
+
+Because the duplicate is appended and the tree shape changes, call `get_node_tree` before issuing more path-based edits.
+
+### insert_parent_node_by_automation_id
+
+Request:
+
+```json
+{"command":"insert_parent_node_by_automation_id","params":{"automationNodeId":"0/1","name":"Wrapper"}}
+```
+
+The root node cannot be wrapped. This uses the existing `node.InsertParent()` operation. The inserted parent takes the original path and the moved node becomes its first child.
+
+Response shape:
+
+```json
+{"ok":true,"command":"insert_parent_node_by_automation_id","result":{"inserted_node":{"automationNodeId":"0/1","name":"Wrapper","editor_node_id":0,"children_count":1},"moved_node":{"automationNodeId":"0/1/0","name":"Node","editor_node_id":0,"children_count":0}}}
+```
+
+After this operation, descendant `automationNodeId` values can change. Call `get_node_tree` before issuing more path-based edits.
+
+### undo
+
+Request:
+
+```json
+{"command":"undo"}
+```
+
+Response shape:
+
+```json
+{"ok":true,"command":"undo","result":{"status":{"running":true,"has_selected_node":true,"selected_node":{"automationNodeId":"0/0","name":"Node","editor_node_id":0,"children_count":0}}}}
+```
+
+If there is nothing to undo:
+
+```json
+{"ok":false,"command":"undo","error":"nothing to undo"}
+```
+
+### redo
+
+Request:
+
+```json
+{"command":"redo"}
+```
+
+Response shape:
+
+```json
+{"ok":true,"command":"redo","result":{"status":{"running":true,"has_selected_node":true,"selected_node":{"automationNodeId":"0/0","name":"Node","editor_node_id":0,"children_count":0}}}}
+```
+
+If there is nothing to redo:
+
+```json
+{"ok":false,"command":"redo","error":"nothing to redo"}
+```
+
 ## Usage examples
 
 Start Effekseer:
@@ -302,7 +394,7 @@ $client.Close()
 ## Known limitations
 
 - `EditorNodeId` can be `0` before the editor/exporter assigns IDs. MCP clients should prefer `automationNodeId` for edit operations.
-- `automationNodeId` is a path into the current tree. It is stable while the tree shape before that node is unchanged, but sibling insertions/removals can change path indexes. Refresh with `get_node_tree` after structural edits.
+- `automationNodeId` is a path into the current tree. It is stable while the tree shape before that node is unchanged, but sibling insertions, removals, duplicates, and insert-parent operations can change path indexes. Refresh with `get_node_tree` after structural edits.
 - `rename_node` rejects the root node for now.
 - Node names accepted through the bridge are limited to 128 characters.
 - The bridge has no authentication beyond opt-in loopback binding.
