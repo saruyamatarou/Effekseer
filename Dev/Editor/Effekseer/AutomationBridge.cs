@@ -191,7 +191,10 @@ namespace Effekseer
 				command == "step_viewer" ||
 				command == "back_step_viewer" ||
 				command == "get_node_basic_info_by_automation_id" ||
-				command == "get_node_parameter_groups_by_automation_id";
+				command == "get_node_parameter_groups_by_automation_id" ||
+				command == "get_node_base_parameters_by_automation_id" ||
+				command == "get_node_generation_parameters_by_automation_id" ||
+				command == "get_node_transform_parameters_by_automation_id";
 		}
 
 		static JObject ExecuteOnMainThread(string command, JObject parameters)
@@ -264,6 +267,64 @@ namespace Effekseer
 				}
 
 				return CreateOk(command, CreateNodeParameterGroupsPayload(node, automationNodeId));
+			}
+
+			if (command == "get_node_base_parameters_by_automation_id")
+			{
+				if (!TryGetStringParameter(parameters, "automationNodeId", out var automationNodeId, out var error))
+				{
+					return CreateError(command, error);
+				}
+
+				var node = FindNodeByAutomationNodeId(automationNodeId, out error);
+				if (node == null)
+				{
+					return CreateError(command, error);
+				}
+
+				return CreateOk(command, CreateNodeBaseParametersPayload(node, automationNodeId));
+			}
+
+			if (command == "get_node_generation_parameters_by_automation_id")
+			{
+				if (!TryGetStringParameter(parameters, "automationNodeId", out var automationNodeId, out var error))
+				{
+					return CreateError(command, error);
+				}
+
+				var node = FindNodeByAutomationNodeId(automationNodeId, out error);
+				if (node == null)
+				{
+					return CreateError(command, error);
+				}
+
+				if (!(node is Data.Node regularNode))
+				{
+					return CreateError(command, "node does not have generation parameters");
+				}
+
+				return CreateOk(command, CreateNodeGenerationParametersPayload(regularNode, automationNodeId));
+			}
+
+			if (command == "get_node_transform_parameters_by_automation_id")
+			{
+				if (!TryGetStringParameter(parameters, "automationNodeId", out var automationNodeId, out var error))
+				{
+					return CreateError(command, error);
+				}
+
+				var node = FindNodeByAutomationNodeId(automationNodeId, out error);
+				if (node == null)
+				{
+					return CreateError(command, error);
+				}
+
+				if (!(node is Data.Node regularNode))
+				{
+					return CreateError(command, "node does not have transform parameters");
+				}
+
+				return CreateOk(command, CreateNodeTransformParametersPayload(regularNode, automationNodeId));
 			}
 
 			if (command == "select_node_by_id")
@@ -727,6 +788,289 @@ namespace Effekseer
 				["automationNodeId"] = automationNodeId,
 				["name"] = node.Name.Value,
 				["groups"] = groups
+			};
+		}
+
+		static JObject CreateNodeBaseParametersPayload(Data.NodeBase node, string automationNodeId)
+		{
+			return new JObject
+			{
+				["automationNodeId"] = automationNodeId,
+				["name"] = node.Name.Value,
+				["isRendered"] = node.IsRendered.Value,
+				["childCount"] = node.Children.Count,
+				["nodeType"] = node is Data.NodeRoot ? "root" : "node",
+				["className"] = node.GetType().Name
+			};
+		}
+
+		static JObject CreateNodeGenerationParametersPayload(Data.Node node, string automationNodeId)
+		{
+			var common = node.CommonValues;
+			var generation = common.Generation;
+			return new JObject
+			{
+				["automationNodeId"] = automationNodeId,
+				["name"] = node.Name.Value,
+				["maxGeneration"] = CreateIntWithInfinitePayload(common.MaxGeneration),
+				["life"] = CreateIntWithRandomPayload(common.Life),
+				["generation"] = new JObject
+				{
+					["timing"] = CreateEnumPayload(generation.Timing),
+					["generationTime"] = CreateFloatWithRandomPayload(generation.GenerationTime),
+					["generationTimeOffset"] = CreateFloatWithRandomPayload(generation.GenerationTimeOffset),
+					["toStartGeneration"] = CreateEnumPayload(generation.ToStartGeneration),
+					["toStopGeneration"] = CreateEnumPayload(generation.ToStopGeneration),
+					["trigger"] = CreateEnumPayload(generation.Trigger),
+					["triggerCount"] = CreateIntWithRandomPayload(generation.TriggerCount)
+				},
+				["parentEffect"] = new JObject
+				{
+					["location"] = CreateEnumPayload(common.LocationEffectType),
+					["rotation"] = CreateEnumPayload(common.RotationEffectType),
+					["scale"] = CreateEnumPayload(common.ScaleEffectType)
+				},
+				["removal"] = new JObject
+				{
+					["whenLifeIsExtinct"] = common.Removal.WhenLifeIsExtinct.Value,
+					["whenParentIsRemoved"] = common.Removal.WhenParentIsRemoved.Value,
+					["whenAllChildrenAreRemoved"] = common.Removal.WhenAllChildrenAreRemoved.Value,
+					["triggerToRemove"] = CreateEnumPayload(common.Removal.TriggerToRemove)
+				}
+			};
+		}
+
+		static JObject CreateNodeTransformParametersPayload(Data.Node node, string automationNodeId)
+		{
+			return new JObject
+			{
+				["automationNodeId"] = automationNodeId,
+				["name"] = node.Name.Value,
+				["location"] = CreateLocationParametersPayload(node.LocationValues),
+				["rotation"] = CreateRotationParametersPayload(node.RotationValues),
+				["scale"] = CreateScaleParametersPayload(node.ScalingValues)
+			};
+		}
+
+		static JObject CreateLocationParametersPayload(Data.LocationValues values)
+		{
+			return new JObject
+			{
+				["type"] = CreateEnumPayload(values.Type),
+				["fixed"] = new JObject
+				{
+					["location"] = CreateVector3DPayload(values.Fixed.Location)
+				},
+				["pva"] = new JObject
+				{
+					["location"] = CreateVector3DWithRandomPayload(values.PVA.Location),
+					["velocity"] = CreateVector3DWithRandomPayload(values.PVA.Velocity),
+					["acceleration"] = CreateVector3DWithRandomPayload(values.PVA.Acceleration)
+				},
+				["easing"] = CreateVector3DEasingPayload(values.Easing),
+				["locationFCurve"] = CreateComplexSummaryPayload("fcurve", "FCurve values are not expanded in this read-only spike"),
+				["nurbsCurve"] = new JObject
+				{
+					["summary"] = "NURBS curve file path is intentionally omitted",
+					["scale"] = CreateFloatPayload(values.NurbsCurve.Scale),
+					["moveSpeed"] = CreateFloatPayload(values.NurbsCurve.MoveSpeed),
+					["loopType"] = CreateEnumPayload(values.NurbsCurve.LoopType)
+				},
+				["viewOffset"] = new JObject
+				{
+					["distance"] = CreateFloatWithRandomPayload(values.ViewOffset.Distance)
+				}
+			};
+		}
+
+		static JObject CreateRotationParametersPayload(Data.RotationValues values)
+		{
+			return new JObject
+			{
+				["type"] = CreateEnumPayload(values.Type),
+				["fixed"] = new JObject
+				{
+					["rotation"] = CreateVector3DPayload(values.Fixed.Rotation)
+				},
+				["pva"] = new JObject
+				{
+					["rotation"] = CreateVector3DWithRandomPayload(values.PVA.Rotation),
+					["velocity"] = CreateVector3DWithRandomPayload(values.PVA.Velocity),
+					["acceleration"] = CreateVector3DWithRandomPayload(values.PVA.Acceleration)
+				},
+				["easing"] = CreateVector3DEasingPayload(values.Easing),
+				["axisPVA"] = new JObject
+				{
+					["axis"] = CreateVector3DWithRandomPayload(values.AxisPVA.Axis),
+					["rotation"] = CreateFloatWithRandomPayload(values.AxisPVA.Rotation),
+					["velocity"] = CreateFloatWithRandomPayload(values.AxisPVA.Velocity),
+					["acceleration"] = CreateFloatWithRandomPayload(values.AxisPVA.Acceleration)
+				},
+				["axisEasing"] = new JObject
+				{
+					["axis"] = CreateVector3DWithRandomPayload(values.AxisEasing.Axis),
+					["easing"] = CreateFloatEasingPayload(values.AxisEasing.Easing)
+				},
+				["rotationFCurve"] = CreateComplexSummaryPayload("fcurve", "FCurve values are not expanded in this read-only spike"),
+				["velocity"] = new JObject
+				{
+					["axis"] = CreateEnumPayload(values.Velocity.Axis)
+				}
+			};
+		}
+
+		static JObject CreateScaleParametersPayload(Data.ScaleValues values)
+		{
+			return new JObject
+			{
+				["type"] = CreateEnumPayload(values.Type),
+				["fixed"] = new JObject
+				{
+					["scale"] = CreateVector3DPayload(values.Fixed.Scale)
+				},
+				["pva"] = new JObject
+				{
+					["scale"] = CreateVector3DWithRandomPayload(values.PVA.Scale),
+					["velocity"] = CreateVector3DWithRandomPayload(values.PVA.Velocity),
+					["acceleration"] = CreateVector3DWithRandomPayload(values.PVA.Acceleration)
+				},
+				["easing"] = CreateVector3DEasingPayload(values.Easing),
+				["singlePVA"] = new JObject
+				{
+					["scale"] = CreateFloatWithRandomPayload(values.SinglePVA.Scale),
+					["velocity"] = CreateFloatWithRandomPayload(values.SinglePVA.Velocity),
+					["acceleration"] = CreateFloatWithRandomPayload(values.SinglePVA.Acceleration)
+				},
+				["singleEasing"] = CreateFloatEasingPayload(values.SingleEasing),
+				["fcurve"] = CreateComplexSummaryPayload("fcurve", "FCurve values are not expanded in this read-only spike"),
+				["singleFCurve"] = CreateComplexSummaryPayload("fcurve", "FCurve values are not expanded in this read-only spike")
+			};
+		}
+
+		static JObject CreateFloatPayload(Data.Value.Float value)
+		{
+			return new JObject
+			{
+				["value"] = value.Value
+			};
+		}
+
+		static JObject CreateFloatWithRandomPayload(Data.Value.FloatWithRandom value)
+		{
+			return new JObject
+			{
+				["center"] = value.Center,
+				["min"] = value.Min,
+				["max"] = value.Max,
+				["amplitude"] = value.Amplitude,
+				["drawnAs"] = value.DrawnAs.ToString()
+			};
+		}
+
+		static JObject CreateIntWithRandomPayload(Data.Value.IntWithRandom value)
+		{
+			return new JObject
+			{
+				["center"] = value.Center,
+				["min"] = value.Min,
+				["max"] = value.Max,
+				["amplitude"] = value.Amplitude,
+				["drawnAs"] = value.DrawnAs.ToString()
+			};
+		}
+
+		static JObject CreateIntWithInfinitePayload(Data.Value.IntWithInifinite value)
+		{
+			return new JObject
+			{
+				["value"] = value.Value.Value,
+				["infinite"] = value.Infinite.Value
+			};
+		}
+
+		static JObject CreateVector3DPayload(Data.Value.Vector3D value)
+		{
+			return new JObject
+			{
+				["x"] = value.X.Value,
+				["y"] = value.Y.Value,
+				["z"] = value.Z.Value
+			};
+		}
+
+		static JObject CreateVector3DWithRandomPayload(Data.Value.Vector3DWithRandom value)
+		{
+			return new JObject
+			{
+				["x"] = CreateFloatWithRandomPayload(value.X),
+				["y"] = CreateFloatWithRandomPayload(value.Y),
+				["z"] = CreateFloatWithRandomPayload(value.Z),
+				["drawnAs"] = value.DrawnAs.ToString()
+			};
+		}
+
+		static JObject CreateEnumPayload<T>(Data.Value.Enum<T> value)
+			where T : struct, IComparable, IFormattable, IConvertible
+		{
+			return new JObject
+			{
+				["value"] = value.Value.ToString(),
+				["valueId"] = value.GetValueAsInt()
+			};
+		}
+
+		static JObject CreateFloatEasingPayload(Data.FloatEasingParamater value)
+		{
+			return new JObject
+			{
+				["type"] = CreateEnumPayload(value.Type),
+				["start"] = CreateFloatWithRandomPayload(value.Start),
+				["end"] = CreateFloatWithRandomPayload(value.End),
+				["startSpeed"] = CreateEnumPayload(value.StartSpeed),
+				["endSpeed"] = CreateEnumPayload(value.EndSpeed),
+				["isMiddleEnabled"] = value.IsMiddleEnabled.Value,
+				["middle"] = CreateFloatWithRandomPayload(value.Middle),
+				["isRandomGroupEnabled"] = value.IsRandomGroupEnabled.Value,
+				["randomGroupA"] = value.RandomGroupA.Value,
+				["isIndividualTypeEnabled"] = value.IsIndividualTypeEnabled.Value,
+				["typeA"] = CreateEnumPayload(value.Type_A)
+			};
+		}
+
+		static JObject CreateVector3DEasingPayload(Data.Vector3DEasingParamater value)
+		{
+			return new JObject
+			{
+				["type"] = CreateEnumPayload(value.Type),
+				["start"] = CreateVector3DWithRandomPayload(value.Start),
+				["end"] = CreateVector3DWithRandomPayload(value.End),
+				["startSpeed"] = CreateEnumPayload(value.StartSpeed),
+				["endSpeed"] = CreateEnumPayload(value.EndSpeed),
+				["isMiddleEnabled"] = value.IsMiddleEnabled.Value,
+				["middle"] = CreateVector3DWithRandomPayload(value.Middle),
+				["isRandomGroupEnabled"] = value.IsRandomGroupEnabled.Value,
+				["randomGroup"] = new JObject
+				{
+					["x"] = value.RandomGroupX.Value,
+					["y"] = value.RandomGroupY.Value,
+					["z"] = value.RandomGroupZ.Value
+				},
+				["isIndividualTypeEnabled"] = value.IsIndividualTypeEnabled.Value,
+				["individualType"] = new JObject
+				{
+					["x"] = CreateEnumPayload(value.TypeX),
+					["y"] = CreateEnumPayload(value.TypeY),
+					["z"] = CreateEnumPayload(value.TypeZ)
+				}
+			};
+		}
+
+		static JObject CreateComplexSummaryPayload(string kind, string summary)
+		{
+			return new JObject
+			{
+				["kind"] = kind,
+				["summary"] = summary
 			};
 		}
 

@@ -416,7 +416,10 @@ Investigation notes:
 - Regular `Data.Node` adds editable value objects: `CommonValues`, `LocationValues`, `RotationValues`, `ScalingValues`, `LocationAbsValues`, `GenerationLocationValues`, `DepthValues`, `RendererCommonValues`, `DrawingValues`, `SoundValues`, `AdvancedRendererCommonValuesValues`, `KillRulesValues`, `CollisionsValues`, and `GpuParticles`.
 - GUI dock panels use `BindableComponent.ParameterList.SetValue(...)` with those objects, for example common/basic settings, spawning method, position, rotation, scale, render settings, sound, kill rules, collisions, and GPU particles.
 - Safe for this phase: node identity, tree/layer counts, `IsRendered`, class/type names, and allowlisted coarse group names.
-- Deferred for a later phase: writing parameters, texture replacement, file open/save, arbitrary reflection dumps, and arbitrary property-name reads.
+- Parameter value inspection reads only hand-written allowlisted properties. `CommonValues.Generation`, `CommonValues.Life`, `CommonValues.MaxGeneration`, `LocationValues`, `RotationValues`, and `ScalingValues` expose basic numeric value objects that can be safely summarized without reflection.
+- `Value.FloatWithRandom` and `Value.IntWithRandom` are returned as `center`, `min`, `max`, `amplitude`, and `drawnAs`. `Value.Vector3D` is returned as `x/y/z`. `Value.Vector3DWithRandom` returns one random summary per axis.
+- Complex curve data is currently summarized only. NURBS curve file paths and other local resource paths are intentionally omitted.
+- Deferred for a later phase: writing parameters, texture replacement, file open/save, arbitrary reflection dumps, arbitrary property-name reads, and full FCurve/NURBS data extraction.
 
 ### get_node_basic_info_by_automation_id
 
@@ -453,6 +456,60 @@ Response shape for the root node:
 ```
 
 Parameter write commands such as `set_parameter` are intentionally not part of this phase.
+
+## Parameter value inspection commands
+
+Parameter value inspection commands are read-only. They run on the main/UI thread through `AutomationBridge.Update()` and expose only fixed allowlisted value summaries. They do not accept arbitrary parameter names and do not mutate editor state.
+
+### get_node_base_parameters_by_automation_id
+
+Request:
+
+```json
+{"command":"get_node_base_parameters_by_automation_id","params":{"automationNodeId":"0/1"}}
+```
+
+Response shape:
+
+```json
+{"ok":true,"command":"get_node_base_parameters_by_automation_id","result":{"automationNodeId":"0/1","name":"Node","isRendered":true,"childCount":0,"nodeType":"node","className":"Node"}}
+```
+
+This command can be used for both the root node and regular nodes.
+
+### get_node_generation_parameters_by_automation_id
+
+Request:
+
+```json
+{"command":"get_node_generation_parameters_by_automation_id","params":{"automationNodeId":"0/1"}}
+```
+
+Response shape:
+
+```json
+{"ok":true,"command":"get_node_generation_parameters_by_automation_id","result":{"automationNodeId":"0/1","name":"Node","maxGeneration":{"value":1,"infinite":false},"life":{"center":100,"min":100,"max":100,"amplitude":0,"drawnAs":"CenterAndAmplitude"},"generation":{"timing":{"value":"Continuous","valueId":0},"generationTime":{"center":1.0,"min":1.0,"max":1.0,"amplitude":0.0,"drawnAs":"CenterAndAmplitude"},"generationTimeOffset":{"center":0.0,"min":0.0,"max":0.0,"amplitude":0.0,"drawnAs":"CenterAndAmplitude"},"toStartGeneration":{"value":"None","valueId":0},"toStopGeneration":{"value":"None","valueId":0},"trigger":{"value":"None","valueId":0},"triggerCount":{"center":1,"min":1,"max":1,"amplitude":0,"drawnAs":"CenterAndAmplitude"}},"parentEffect":{"location":{"value":"Already","valueId":0},"rotation":{"value":"Already","valueId":0},"scale":{"value":"Already","valueId":0}},"removal":{"whenLifeIsExtinct":true,"whenParentIsRemoved":false,"whenAllChildrenAreRemoved":false,"triggerToRemove":{"value":"None","valueId":0}}}}
+```
+
+The root node does not have `Data.Node.CommonValues`; the bridge returns an error if this command targets root.
+
+### get_node_transform_parameters_by_automation_id
+
+Request:
+
+```json
+{"command":"get_node_transform_parameters_by_automation_id","params":{"automationNodeId":"0/1"}}
+```
+
+Response shape:
+
+```json
+{"ok":true,"command":"get_node_transform_parameters_by_automation_id","result":{"automationNodeId":"0/1","name":"Node","location":{"type":{"value":"Fixed","valueId":0},"fixed":{"location":{"x":0.0,"y":0.0,"z":0.0}},"pva":{"location":{"x":{"center":0.0,"min":0.0,"max":0.0,"amplitude":0.0,"drawnAs":"CenterAndAmplitude"},"y":{"center":0.0,"min":0.0,"max":0.0,"amplitude":0.0,"drawnAs":"CenterAndAmplitude"},"z":{"center":0.0,"min":0.0,"max":0.0,"amplitude":0.0,"drawnAs":"CenterAndAmplitude"},"drawnAs":"CenterAndAmplitude"},"velocity":{},"acceleration":{}},"easing":{},"locationFCurve":{"kind":"fcurve","summary":"FCurve values are not expanded in this read-only spike"},"nurbsCurve":{"summary":"NURBS curve file path is intentionally omitted","scale":{"value":1.0},"moveSpeed":{"value":1.0},"loopType":{"value":"Repeat","valueId":0}},"viewOffset":{"distance":{"center":3.0,"min":3.0,"max":3.0,"amplitude":0.0,"drawnAs":"CenterAndAmplitude"}}},"rotation":{"type":{"value":"Fixed","valueId":0},"fixed":{"rotation":{"x":0.0,"y":0.0,"z":0.0}}},"scale":{"type":{"value":"Fixed","valueId":0},"fixed":{"scale":{"x":1.0,"y":1.0,"z":1.0}}}}}
+```
+
+The actual response includes the same allowlisted value summaries for PVA/easing/axis/single-scale groups. `FCurve` values are intentionally summarized for now. The root node does not have transform parameter objects; the bridge returns an error if this command targets root.
+
+Parameter write remains a future phase. A later write API should use stable allowlisted parameter IDs, validation rules, and undo-aware editor commands instead of accepting arbitrary property paths.
 
 ## Usage examples
 
@@ -500,6 +557,7 @@ $client.Close()
 - Editor state reads and mutations run from `AutomationBridge.Update()` on the main/UI thread.
 - Viewer playback commands run from `AutomationBridge.Update()` on the main/UI thread and call existing editor command methods; they do not click or automate GUI controls.
 - Parameter inspection commands are read-only and expose only allowlisted summary fields/group names.
+- Parameter value inspection commands are read-only and expose only hand-written allowlisted numeric/enum/boolean summaries. They do not perform reflection dumps or arbitrary property-name reads.
 - Responses intentionally avoid absolute paths and local resource paths.
 
 ## Known limitations
@@ -509,4 +567,4 @@ $client.Close()
 - `rename_node` rejects the root node for now.
 - Node names accepted through the bridge are limited to 128 characters.
 - The bridge has no authentication beyond opt-in loopback binding.
-- Parameter inspection currently reports group availability only. It does not enumerate or mutate individual parameter values.
+- Parameter value inspection currently covers base, generation/common, location, rotation, and scale summaries only. It does not mutate values and does not expand full FCurve/NURBS data.
