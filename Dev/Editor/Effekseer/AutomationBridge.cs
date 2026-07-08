@@ -22,6 +22,40 @@ namespace Effekseer
 		const int MaxNodeNameLength = 128;
 		const int MaxAutomationIntegerValue = 1000000;
 		const float MaxAutomationFloatAbs = 1000000.0f;
+		static readonly string[] AllowedCommands = new[]
+		{
+			"get_bridge_capabilities",
+			"ping",
+			"get_status",
+			"get_node_tree",
+			"add_node_to_selected",
+			"select_node_by_id",
+			"add_node_to_parent",
+			"rename_node",
+			"select_node_by_automation_id",
+			"add_node_to_parent_by_automation_id",
+			"rename_node_by_automation_id",
+			"remove_node_by_automation_id",
+			"duplicate_node_by_automation_id",
+			"insert_parent_node_by_automation_id",
+			"undo",
+			"redo",
+			"play_viewer",
+			"stop_viewer",
+			"step_viewer",
+			"back_step_viewer",
+			"get_node_basic_info_by_automation_id",
+			"get_node_parameter_groups_by_automation_id",
+			"get_node_base_parameters_by_automation_id",
+			"get_node_generation_parameters_by_automation_id",
+			"get_node_transform_parameters_by_automation_id",
+			"set_node_is_rendered_by_automation_id",
+			"set_node_max_generation_by_automation_id",
+			"set_node_life_by_automation_id",
+			"set_node_fixed_location_by_automation_id",
+			"set_node_fixed_rotation_by_automation_id",
+			"set_node_fixed_scale_by_automation_id",
+		};
 		readonly int port;
 		readonly ConcurrentQueue<PendingCommand> pendingCommands = new ConcurrentQueue<PendingCommand>();
 		readonly CancellationTokenSource cancellation = new CancellationTokenSource();
@@ -173,40 +207,16 @@ namespace Effekseer
 
 		static bool IsAllowedCommand(string command)
 		{
-			return command == "ping" ||
-				command == "get_status" ||
-				command == "get_node_tree" ||
-				command == "add_node_to_selected" ||
-				command == "select_node_by_id" ||
-				command == "add_node_to_parent" ||
-				command == "rename_node" ||
-				command == "select_node_by_automation_id" ||
-				command == "add_node_to_parent_by_automation_id" ||
-				command == "rename_node_by_automation_id" ||
-				command == "remove_node_by_automation_id" ||
-				command == "duplicate_node_by_automation_id" ||
-				command == "insert_parent_node_by_automation_id" ||
-				command == "undo" ||
-				command == "redo" ||
-				command == "play_viewer" ||
-				command == "stop_viewer" ||
-				command == "step_viewer" ||
-				command == "back_step_viewer" ||
-				command == "get_node_basic_info_by_automation_id" ||
-				command == "get_node_parameter_groups_by_automation_id" ||
-				command == "get_node_base_parameters_by_automation_id" ||
-				command == "get_node_generation_parameters_by_automation_id" ||
-				command == "get_node_transform_parameters_by_automation_id" ||
-				command == "set_node_is_rendered_by_automation_id" ||
-				command == "set_node_max_generation_by_automation_id" ||
-				command == "set_node_life_by_automation_id" ||
-				command == "set_node_fixed_location_by_automation_id" ||
-				command == "set_node_fixed_rotation_by_automation_id" ||
-				command == "set_node_fixed_scale_by_automation_id";
+			return Array.IndexOf(AllowedCommands, command) >= 0;
 		}
 
 		static JObject ExecuteOnMainThread(string command, JObject parameters)
 		{
+			if (command == "get_bridge_capabilities")
+			{
+				return CreateOk(command, CreateBridgeCapabilitiesPayload());
+			}
+
 			if (command == "ping")
 			{
 				return CreateOk(command, new JObject
@@ -886,6 +896,22 @@ namespace Effekseer
 				["running"] = true,
 				["has_selected_node"] = selected != null,
 				["selected_node"] = selected != null ? CreateNodePayload(selected) : null
+			};
+		}
+
+		static JObject CreateBridgeCapabilitiesPayload()
+		{
+			var commands = new JArray();
+			for (int i = 0; i < AllowedCommands.Length; i++)
+			{
+				commands.Add(AllowedCommands[i]);
+			}
+
+			return new JObject
+			{
+				["bridgeName"] = "Effekseer Automation Bridge",
+				["protocolVersion"] = 1,
+				["commands"] = commands
 			};
 		}
 

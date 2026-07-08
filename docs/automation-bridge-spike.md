@@ -8,7 +8,7 @@ This spike adds a minimal, opt-in automation bridge for controlling a running Ef
 - Binds only to `127.0.0.1`.
 - Enabled by `--automation-port <port>` or `EFFEKSEER_AUTOMATION_PORT=<port>`.
 - Uses JSON-line TCP: one JSON object per line, one JSON object response per line.
-- Allows only explicit commands: `ping`, `get_status`, `get_node_tree`, `add_node_to_selected`, `select_node_by_id`, `add_node_to_parent`, `rename_node`, `select_node_by_automation_id`, `add_node_to_parent_by_automation_id`, `rename_node_by_automation_id`, `remove_node_by_automation_id`, `duplicate_node_by_automation_id`, `insert_parent_node_by_automation_id`, `undo`, `redo`, `play_viewer`, `stop_viewer`, `step_viewer`, `back_step_viewer`, `get_node_basic_info_by_automation_id`, and `get_node_parameter_groups_by_automation_id`.
+- Allows only explicit commands. Use `get_bridge_capabilities` to retrieve the exact command list supported by the running editor.
 - Does not execute shell commands or arbitrary C# code.
 - Does not use UI clicks or GUI automation.
 
@@ -55,6 +55,22 @@ A separate bridge is smaller for this spike and avoids changing existing network
 ## Commands
 
 Requests support an optional `params` object. Existing requests without `params` remain valid and are treated as if `params` were `{}`.
+
+### get_bridge_capabilities
+
+Request:
+
+```json
+{"command":"get_bridge_capabilities"}
+```
+
+Response shape:
+
+```json
+{"ok":true,"command":"get_bridge_capabilities","result":{"bridgeName":"Effekseer Automation Bridge","protocolVersion":1,"commands":["get_bridge_capabilities","ping","get_status","get_node_tree"]}}
+```
+
+The actual `commands` array contains every allowlisted command supported by the running bridge. MCP smoke tests should call this first and fail early if a required command is missing, which usually means Effekseer.exe is older than the MCP client expects.
 
 ```json
 {"command":"ping"}
@@ -671,6 +687,7 @@ $client.Close()
 - The listener binds to `127.0.0.1` only.
 - Requests are JSON-line command objects, not scripts.
 - Only allowlisted commands are accepted.
+- `get_bridge_capabilities` returns the same command list used by the bridge allowlist, so clients can detect stale editor builds before issuing newer commands.
 - The bridge does not execute shell commands or arbitrary C# code.
 - The network/client tasks parse JSON and enqueue command data only. They do not read or mutate `Core`, `Core.SelectedNode`, or node objects directly.
 - Editor state reads and mutations run from `AutomationBridge.Update()` on the main/UI thread.
