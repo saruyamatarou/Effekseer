@@ -8,7 +8,7 @@ This spike adds a minimal, opt-in automation bridge for controlling a running Ef
 - Binds only to `127.0.0.1`.
 - Enabled by `--automation-port <port>` or `EFFEKSEER_AUTOMATION_PORT=<port>`.
 - Uses JSON-line TCP: one JSON object per line, one JSON object response per line.
-- Allows only explicit commands: `ping`, `get_status`, `get_node_tree`, and `add_node_to_selected`.
+- Allows only explicit commands: `ping`, `get_status`, `get_node_tree`, `add_node_to_selected`, `select_node_by_id`, `add_node_to_parent`, and `rename_node`.
 - Does not execute shell commands or arbitrary C# code.
 - Does not use UI clicks or GUI automation.
 
@@ -53,6 +53,16 @@ For automation, extending that path would mix two different responsibilities:
 A separate bridge is smaller for this spike and avoids changing existing network behavior.
 
 ## Commands
+
+Requests support an optional `params` object. Existing requests without `params` remain valid and are treated as if `params` were `{}`.
+
+```json
+{"command":"ping"}
+```
+
+```json
+{"command":"select_node_by_id","params":{"editorNodeId":1}}
+```
 
 ### ping
 
@@ -120,6 +130,70 @@ Response shape:
 
 The response contains only editor node metadata needed by automation clients. It does not include project paths, resource paths, or other local filesystem information.
 
+### select_node_by_id
+
+Request:
+
+```json
+{"command":"select_node_by_id","params":{"editorNodeId":1}}
+```
+
+If the node is found, the editor selection is updated on the main/UI thread:
+
+```json
+{"ok":true,"command":"select_node_by_id","result":{"selected_node":{"name":"Node","editor_node_id":1,"children_count":0}}}
+```
+
+If the node is not found:
+
+```json
+{"ok":false,"command":"select_node_by_id","error":"node is not found"}
+```
+
+### add_node_to_parent
+
+Request:
+
+```json
+{"command":"add_node_to_parent","params":{"parentEditorNodeId":1,"name":"Child"}}
+```
+
+`params.name` is optional. If present, it must be non-empty and 128 characters or less.
+
+Response shape:
+
+```json
+{"ok":true,"command":"add_node_to_parent","result":{"parent_node":{"name":"Node","editor_node_id":1,"children_count":1},"added_node":{"name":"Child","editor_node_id":0,"children_count":0}}}
+```
+
+If the parent is not found:
+
+```json
+{"ok":false,"command":"add_node_to_parent","error":"parent node is not found"}
+```
+
+### rename_node
+
+Request:
+
+```json
+{"command":"rename_node","params":{"editorNodeId":1,"name":"Renamed"}}
+```
+
+`params.name` must be non-empty and 128 characters or less. Renaming the root node is currently rejected.
+
+Response shape:
+
+```json
+{"ok":true,"command":"rename_node","result":{"renamed_node":{"name":"Renamed","editor_node_id":1,"children_count":0}}}
+```
+
+If the root node is targeted:
+
+```json
+{"ok":false,"command":"rename_node","error":"root node cannot be renamed"}
+```
+
 ## Usage examples
 
 Start Effekseer:
@@ -154,3 +228,21 @@ $client.Close()
 - `add_node_to_selected` currently mirrors the existing `Commands.AddNode()` layer-limit behavior but returns the newly created node by calling `Core.SelectedNode.AddChild()` directly.
 - Response waiting has a 30 second timeout if the editor main loop is blocked.
 - Future MCP-facing work should define a versioned command schema, request IDs, richer error codes, and more explicit node identifiers.
+
+## Security policy
+
+- The bridge is disabled by default and starts only when an automation port is explicitly provided.
+- The listener binds to `127.0.0.1` only.
+- Requests are JSON-line command objects, not scripts.
+- Only allowlisted commands are accepted.
+- The bridge does not execute shell commands or arbitrary C# code.
+- The network/client tasks parse JSON and enqueue command data only. They do not read or mutate `Core`, `Core.SelectedNode`, or node objects directly.
+- Editor state reads and mutations run from `AutomationBridge.Update()` on the main/UI thread.
+- Responses intentionally avoid absolute paths and local resource paths.
+
+## Known limitations
+
+- `EditorNodeId` can be `0` before the editor/exporter assigns IDs. Automation clients should call `get_node_tree` and use the IDs currently reported by the running editor.
+- `rename_node` rejects the root node for now.
+- Node names accepted through the bridge are limited to 128 characters.
+- The bridge has no authentication beyond opt-in loopback binding.

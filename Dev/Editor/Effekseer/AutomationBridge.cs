@@ -15,9 +15,11 @@ namespace Effekseer
 		class PendingCommand
 		{
 			public string Command;
+			public JObject Params;
 			public TaskCompletionSource<JObject> Completion = new TaskCompletionSource<JObject>(TaskCreationOptions.RunContinuationsAsynchronously);
 		}
 
+		const int MaxNodeNameLength = 128;
 		readonly int port;
 		readonly ConcurrentQueue<PendingCommand> pendingCommands = new ConcurrentQueue<PendingCommand>();
 		readonly CancellationTokenSource cancellation = new CancellationTokenSource();
@@ -48,7 +50,7 @@ namespace Effekseer
 			{
 				try
 				{
-					command.Completion.TrySetResult(ExecuteOnMainThread(command.Command));
+					command.Completion.TrySetResult(ExecuteOnMainThread(command.Command, command.Params));
 				}
 				catch (Exception e)
 				{
@@ -137,11 +139,13 @@ namespace Effekseer
 		async Task<JObject> ProcessLine(string line)
 		{
 			string command = null;
+			JObject parameters = null;
 
 			try
 			{
 				var request = JObject.Parse(line);
 				command = request.Value<string>("command");
+				parameters = request["params"] as JObject ?? new JObject();
 			}
 			catch (Exception e)
 			{
@@ -153,7 +157,7 @@ namespace Effekseer
 				return CreateError(command, "unknown command");
 			}
 
-			var pending = new PendingCommand { Command = command };
+			var pending = new PendingCommand { Command = command, Params = parameters };
 			pendingCommands.Enqueue(pending);
 
 			var completed = await Task.WhenAny(pending.Completion.Task, Task.Delay(TimeSpan.FromSeconds(30), cancellation.Token));
@@ -170,10 +174,13 @@ namespace Effekseer
 			return command == "ping" ||
 				command == "get_status" ||
 				command == "get_node_tree" ||
-				command == "add_node_to_selected";
+				command == "add_node_to_selected" ||
+				command == "select_node_by_id" ||
+				command == "add_node_to_parent" ||
+				command == "rename_node";
 		}
 
-		static JObject ExecuteOnMainThread(string command)
+		static JObject ExecuteOnMainThread(string command, JObject parameters)
 		{
 			if (command == "ping")
 			{
@@ -191,6 +198,94 @@ namespace Effekseer
 			if (command == "get_node_tree")
 			{
 				return CreateOk(command, CreateNodeTreePayload());
+			}
+
+			if (command == "select_node_by_id")
+			{
+				if (!TryGetIntParameter(parameters, "editorNodeId", out var editorNodeId, out var error))
+				{
+					return CreateError(command, error);
+				}
+
+				var node = FindNodeByEditorNodeId(editorNodeId);
+				if (node == null)
+				{
+					return CreateError(command, "node is not found");
+				}
+
+				Core.SelectedNode = node;
+				return CreateOk(command, new JObject
+				{
+					["selected_node"] = CreateNodePayload(node)
+				});
+			}
+
+			if (command == "add_node_to_parent")
+			{
+				if (!TryGetIntParameter(parameters, "parentEditorNodeId", out var parentEditorNodeId, out var error))
+				{
+					return CreateError(command, error);
+				}
+
+				var parent = FindNodeByEditorNodeId(parentEditorNodeId);
+				if (parent == null)
+				{
+					return CreateError(command, "parent node is not found");
+				}
+
+				if (parent.GetLayerNumber() >= Constant.NodeLayerLimit)
+				{
+					return CreateError(command, "node layer limit exceeded");
+				}
+
+				var name = parameters.Value<string>("name");
+				if (name != null && !IsValidNodeName(name, out error))
+				{
+					return CreateError(command, error);
+				}
+
+				var added = parent.AddChild();
+				if (name != null)
+				{
+					added.Name.Value = name;
+				}
+
+				return CreateOk(command, new JObject
+				{
+					["parent_node"] = CreateNodePayload(parent),
+					["added_node"] = CreateNodePayload(added)
+				});
+			}
+
+			if (command == "rename_node")
+			{
+				if (!TryGetIntParameter(parameters, "editorNodeId", out var editorNodeId, out var error))
+				{
+					return CreateError(command, error);
+				}
+
+				var name = parameters.Value<string>("name");
+				if (!IsValidNodeName(name, out error))
+				{
+					return CreateError(command, error);
+				}
+
+				var node = FindNodeByEditorNodeId(editorNodeId);
+				if (node == null)
+				{
+					return CreateError(command, "node is not found");
+				}
+
+				if (node.Parent == null)
+				{
+					return CreateError(command, "root node cannot be renamed");
+				}
+
+				node.Name.Value = name;
+				return CreateOk(command, new JObject
+				{
+					["renamed_node"] = CreateNodePayload(node)
+				});
 			}
 
 			if (command == "add_node_to_selected")
@@ -226,6 +321,75 @@ namespace Effekseer
 				["has_selected_node"] = selected != null,
 				["selected_node"] = selected != null ? CreateNodePayload(selected) : null
 			};
+		}
+
+		static bool TryGetIntParameter(JObject parameters, string name, out int value, out string error)
+		{
+			value = 0;
+			error = null;
+
+			if (parameters == null || parameters[name] == null)
+			{
+				error = $"params.{name} is required";
+				return false;
+			}
+
+			if (parameters[name].Type != JTokenType.Integer)
+			{
+				error = $"params.{name} must be an integer";
+				return false;
+			}
+
+			value = parameters.Value<int>(name);
+			return true;
+		}
+
+		static bool IsValidNodeName(string name, out string error)
+		{
+			error = null;
+
+			if (string.IsNullOrEmpty(name))
+			{
+				error = "params.name must not be empty";
+				return false;
+			}
+
+			if (name.Length > MaxNodeNameLength)
+			{
+				error = $"params.name must be {MaxNodeNameLength} characters or less";
+				return false;
+			}
+
+			return true;
+		}
+
+		static Data.NodeBase FindNodeByEditorNodeId(int editorNodeId)
+		{
+			if (Core.Root == null)
+			{
+				throw new InvalidOperationException("root node is not found");
+			}
+
+			return FindNodeByEditorNodeId(Core.Root, editorNodeId);
+		}
+
+		static Data.NodeBase FindNodeByEditorNodeId(Data.NodeBase root, int editorNodeId)
+		{
+			if (root.EditorNodeId == editorNodeId)
+			{
+				return root;
+			}
+
+			for (int i = 0; i < root.Children.Count; i++)
+			{
+				var found = FindNodeByEditorNodeId(root.Children[i], editorNodeId);
+				if (found != null)
+				{
+					return found;
+				}
+			}
+
+			return null;
 		}
 
 		static JObject CreateNodeTreePayload()
