@@ -513,7 +513,7 @@ Parameter write remains a future phase. A later write API should use stable allo
 
 ## Parameter write commands
 
-This is the first minimal parameter write spike. It is intentionally limited to one boolean field, `NodeBase.IsRendered`, so MCP/AI clients can verify a safe write path without introducing a generic parameter setter.
+This started as a minimal parameter write spike for one boolean field, `NodeBase.IsRendered`. The bridge now includes a small basic write set for hand-written, allowlisted numeric parameters. It still intentionally avoids a generic parameter setter.
 
 The bridge still does not support `set_parameter`, arbitrary parameter names, reflection writes, texture replacement, file open/save, or script execution. Write commands run on the main/UI thread through `AutomationBridge.Update()`.
 
@@ -521,7 +521,10 @@ Investigation notes:
 
 - The node tree GUI toggles visibility through `Node.IsRendered.SetValue(value)` in `GUI/Dock/NodeTreeView.cs`.
 - `Data.Value.Boolean.SetValue(bool)` creates a `Command.DelegateCommand` and calls `Command.CommandManager.Execute(cmd)`.
-- The bridge uses the same `node.IsRendered.SetValue(isRendered)` route, so this spike is expected to participate in Effekseer's undo/redo command stack. Runtime smoke testing should still verify the exact editor behavior.
+- GUI parameter controls call the same value object methods for numeric edits: `Value.Int.SetValue`, `Value.IntWithRandom.SetMin/SetMax/SetCenter`, and `Value.Vector3D` axis `Float.SetValue`.
+- Multi-field writes are wrapped in `Command.CommandManager.StartCollection()` / `EndCollection()` so life and vector edits become one undoable collection.
+- The bridge uses those same value object routes, so these write commands are expected to participate in Effekseer's undo/redo command stack. Runtime smoke testing should still verify the exact editor behavior as the write surface expands.
+- Numeric bridge inputs reject missing values, non-number JSON types, NaN, Infinity, and extreme values. Current spike bounds integer writes to `1..1000000` and transform float writes to `-1000000..1000000`.
 
 ### set_node_is_rendered_by_automation_id
 
@@ -544,6 +547,88 @@ Invalid type example:
 ```json
 {"ok":false,"command":"set_node_is_rendered_by_automation_id","error":"params.isRendered must be a boolean"}
 ```
+
+### set_node_max_generation_by_automation_id
+
+Request:
+
+```json
+{"command":"set_node_max_generation_by_automation_id","params":{"automationNodeId":"0/1","maxGeneration":10}}
+```
+
+`params.maxGeneration` must be an integer from `1` to `1000000`. This command targets regular `Data.Node` only; root returns an error. The bridge writes `CommonValues.MaxGeneration.Value.SetValue(...)` and disables the `Infinite` flag with `Infinite.SetValue(false)`.
+
+Response shape:
+
+```json
+{"ok":true,"command":"set_node_max_generation_by_automation_id","result":{"automationNodeId":"0/1","name":"Node","before":{"value":1,"infinite":false},"after":{"value":10,"infinite":false},"generationParameters":{}}}
+```
+
+### set_node_life_by_automation_id
+
+Request:
+
+```json
+{"command":"set_node_life_by_automation_id","params":{"automationNodeId":"0/1","center":60,"min":60,"max":60}}
+```
+
+`center`, `min`, and `max` must be integers from `1` to `1000000`, and must satisfy `min <= center <= max`. The bridge writes `CommonValues.Life` through `SetMin`, `SetMax`, and `SetCenter` in a command collection.
+
+Response shape:
+
+```json
+{"ok":true,"command":"set_node_life_by_automation_id","result":{"automationNodeId":"0/1","name":"Node","before":{"center":100,"min":100,"max":100,"amplitude":0,"drawnAs":"CenterAndAmplitude"},"after":{"center":60,"min":60,"max":60,"amplitude":0,"drawnAs":"CenterAndAmplitude"},"generationParameters":{}}}
+```
+
+### set_node_fixed_location_by_automation_id
+
+Request:
+
+```json
+{"command":"set_node_fixed_location_by_automation_id","params":{"automationNodeId":"0/1","x":0,"y":10,"z":0}}
+```
+
+`x`, `y`, and `z` must be finite JSON numbers from `-1000000` to `1000000`. The bridge writes `LocationValues.Fixed.Location.X/Y/Z.SetValue(...)` in a command collection.
+
+Response shape:
+
+```json
+{"ok":true,"command":"set_node_fixed_location_by_automation_id","result":{"automationNodeId":"0/1","name":"Node","before":{"x":0.0,"y":0.0,"z":0.0},"after":{"x":0.0,"y":10.0,"z":0.0},"transformParameters":{}}}
+```
+
+### set_node_fixed_rotation_by_automation_id
+
+Request:
+
+```json
+{"command":"set_node_fixed_rotation_by_automation_id","params":{"automationNodeId":"0/1","x":0,"y":0,"z":0}}
+```
+
+`x`, `y`, and `z` must be finite JSON numbers from `-1000000` to `1000000`. The bridge writes `RotationValues.Fixed.Rotation.X/Y/Z.SetValue(...)` in a command collection.
+
+Response shape:
+
+```json
+{"ok":true,"command":"set_node_fixed_rotation_by_automation_id","result":{"automationNodeId":"0/1","name":"Node","before":{"x":0.0,"y":0.0,"z":0.0},"after":{"x":0.0,"y":0.0,"z":0.0},"transformParameters":{}}}
+```
+
+### set_node_fixed_scale_by_automation_id
+
+Request:
+
+```json
+{"command":"set_node_fixed_scale_by_automation_id","params":{"automationNodeId":"0/1","x":1,"y":1,"z":1}}
+```
+
+`x`, `y`, and `z` must be finite JSON numbers from `-1000000` to `1000000`. The bridge writes `ScalingValues.Fixed.Scale.X/Y/Z.SetValue(...)` in a command collection.
+
+Response shape:
+
+```json
+{"ok":true,"command":"set_node_fixed_scale_by_automation_id","result":{"automationNodeId":"0/1","name":"Node","before":{"x":1.0,"y":1.0,"z":1.0},"after":{"x":1.0,"y":1.0,"z":1.0},"transformParameters":{}}}
+```
+
+Root nodes do not have generation or transform value objects, so all five basic numeric write commands reject root targets.
 
 ## Usage examples
 
@@ -592,7 +677,7 @@ $client.Close()
 - Viewer playback commands run from `AutomationBridge.Update()` on the main/UI thread and call existing editor command methods; they do not click or automate GUI controls.
 - Parameter inspection commands are read-only and expose only allowlisted summary fields/group names.
 - Parameter value inspection commands are read-only and expose only hand-written allowlisted numeric/enum/boolean summaries. They do not perform reflection dumps or arbitrary property-name reads.
-- Parameter write commands are explicitly allowlisted one by one. The current write surface is only `set_node_is_rendered_by_automation_id`; there is no generic `set_parameter`.
+- Parameter write commands are explicitly allowlisted one by one. The current write surface is `set_node_is_rendered_by_automation_id` plus the limited basic numeric write set; there is no generic `set_parameter`.
 - Responses intentionally avoid absolute paths and local resource paths.
 
 ## Known limitations
@@ -603,4 +688,4 @@ $client.Close()
 - Node names accepted through the bridge are limited to 128 characters.
 - The bridge has no authentication beyond opt-in loopback binding.
 - Parameter value inspection currently covers base, generation/common, location, rotation, and scale summaries only. It does not mutate values and does not expand full FCurve/NURBS data.
-- Parameter write currently covers only `NodeBase.IsRendered`. Undo/redo should use the existing `Value.Boolean.SetValue` command route, but end-to-end editor smoke testing should keep validating this as the write surface expands.
+- Parameter write currently covers only `NodeBase.IsRendered`, `CommonValues.MaxGeneration`, `CommonValues.Life`, and fixed location/rotation/scale vectors. Undo/redo should use existing value object command routes, but end-to-end editor smoke testing should keep validating this as the write surface expands.

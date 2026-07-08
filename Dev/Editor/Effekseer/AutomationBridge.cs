@@ -20,6 +20,8 @@ namespace Effekseer
 		}
 
 		const int MaxNodeNameLength = 128;
+		const int MaxAutomationIntegerValue = 1000000;
+		const float MaxAutomationFloatAbs = 1000000.0f;
 		readonly int port;
 		readonly ConcurrentQueue<PendingCommand> pendingCommands = new ConcurrentQueue<PendingCommand>();
 		readonly CancellationTokenSource cancellation = new CancellationTokenSource();
@@ -195,7 +197,12 @@ namespace Effekseer
 				command == "get_node_base_parameters_by_automation_id" ||
 				command == "get_node_generation_parameters_by_automation_id" ||
 				command == "get_node_transform_parameters_by_automation_id" ||
-				command == "set_node_is_rendered_by_automation_id";
+				command == "set_node_is_rendered_by_automation_id" ||
+				command == "set_node_max_generation_by_automation_id" ||
+				command == "set_node_life_by_automation_id" ||
+				command == "set_node_fixed_location_by_automation_id" ||
+				command == "set_node_fixed_rotation_by_automation_id" ||
+				command == "set_node_fixed_scale_by_automation_id";
 		}
 
 		static JObject ExecuteOnMainThread(string command, JObject parameters)
@@ -357,6 +364,139 @@ namespace Effekseer
 					["before"] = before,
 					["after"] = after,
 					["baseParameters"] = CreateNodeBaseParametersPayload(node, automationNodeId)
+				});
+			}
+
+			if (command == "set_node_max_generation_by_automation_id")
+			{
+				if (!TryGetWritableDataNode(command, parameters, out var automationNodeId, out var regularNode, out var error))
+				{
+					return CreateError(command, error);
+				}
+
+				if (!TryGetBoundedIntParameter(parameters, "maxGeneration", 1, MaxAutomationIntegerValue, out var maxGeneration, out error))
+				{
+					return CreateError(command, error);
+				}
+
+				var before = CreateIntWithInfinitePayload(regularNode.CommonValues.MaxGeneration);
+				Command.CommandManager.StartCollection();
+				try
+				{
+					regularNode.CommonValues.MaxGeneration.Infinite.SetValue(false);
+					regularNode.CommonValues.MaxGeneration.Value.SetValue(maxGeneration);
+				}
+				finally
+				{
+					Command.CommandManager.EndCollection();
+				}
+
+				var after = CreateIntWithInfinitePayload(regularNode.CommonValues.MaxGeneration);
+				return CreateOk(command, new JObject
+				{
+					["automationNodeId"] = automationNodeId,
+					["name"] = regularNode.Name.Value,
+					["before"] = before,
+					["after"] = after,
+					["generationParameters"] = CreateNodeGenerationParametersPayload(regularNode, automationNodeId)
+				});
+			}
+
+			if (command == "set_node_life_by_automation_id")
+			{
+				if (!TryGetWritableDataNode(command, parameters, out var automationNodeId, out var regularNode, out var error))
+				{
+					return CreateError(command, error);
+				}
+
+				if (!TryGetBoundedIntParameter(parameters, "center", 1, MaxAutomationIntegerValue, out var center, out error) ||
+					!TryGetBoundedIntParameter(parameters, "min", 1, MaxAutomationIntegerValue, out var min, out error) ||
+					!TryGetBoundedIntParameter(parameters, "max", 1, MaxAutomationIntegerValue, out var max, out error))
+				{
+					return CreateError(command, error);
+				}
+
+				if (min > center || center > max)
+				{
+					return CreateError(command, "params.min <= params.center <= params.max is required");
+				}
+
+				var before = CreateIntWithRandomPayload(regularNode.CommonValues.Life);
+				SetIntWithRandom(regularNode.CommonValues.Life, center, min, max);
+				var after = CreateIntWithRandomPayload(regularNode.CommonValues.Life);
+				return CreateOk(command, new JObject
+				{
+					["automationNodeId"] = automationNodeId,
+					["name"] = regularNode.Name.Value,
+					["before"] = before,
+					["after"] = after,
+					["generationParameters"] = CreateNodeGenerationParametersPayload(regularNode, automationNodeId)
+				});
+			}
+
+			if (command == "set_node_fixed_location_by_automation_id")
+			{
+				if (!TryGetWritableDataNode(command, parameters, out var automationNodeId, out var regularNode, out var error) ||
+					!TryGetVector3Parameters(parameters, out var x, out var y, out var z, out error))
+				{
+					return CreateError(command, error);
+				}
+
+				var target = regularNode.LocationValues.Fixed.Location;
+				var before = CreateVector3DPayload(target);
+				SetVector3D(target, x, y, z);
+				var after = CreateVector3DPayload(target);
+				return CreateOk(command, new JObject
+				{
+					["automationNodeId"] = automationNodeId,
+					["name"] = regularNode.Name.Value,
+					["before"] = before,
+					["after"] = after,
+					["transformParameters"] = CreateNodeTransformParametersPayload(regularNode, automationNodeId)
+				});
+			}
+
+			if (command == "set_node_fixed_rotation_by_automation_id")
+			{
+				if (!TryGetWritableDataNode(command, parameters, out var automationNodeId, out var regularNode, out var error) ||
+					!TryGetVector3Parameters(parameters, out var x, out var y, out var z, out error))
+				{
+					return CreateError(command, error);
+				}
+
+				var target = regularNode.RotationValues.Fixed.Rotation;
+				var before = CreateVector3DPayload(target);
+				SetVector3D(target, x, y, z);
+				var after = CreateVector3DPayload(target);
+				return CreateOk(command, new JObject
+				{
+					["automationNodeId"] = automationNodeId,
+					["name"] = regularNode.Name.Value,
+					["before"] = before,
+					["after"] = after,
+					["transformParameters"] = CreateNodeTransformParametersPayload(regularNode, automationNodeId)
+				});
+			}
+
+			if (command == "set_node_fixed_scale_by_automation_id")
+			{
+				if (!TryGetWritableDataNode(command, parameters, out var automationNodeId, out var regularNode, out var error) ||
+					!TryGetVector3Parameters(parameters, out var x, out var y, out var z, out error))
+				{
+					return CreateError(command, error);
+				}
+
+				var target = regularNode.ScalingValues.Fixed.Scale;
+				var before = CreateVector3DPayload(target);
+				SetVector3D(target, x, y, z);
+				var after = CreateVector3DPayload(target);
+				return CreateOk(command, new JObject
+				{
+					["automationNodeId"] = automationNodeId,
+					["name"] = regularNode.Name.Value,
+					["before"] = before,
+					["after"] = after,
+					["transformParameters"] = CreateNodeTransformParametersPayload(regularNode, automationNodeId)
 				});
 			}
 
@@ -1107,6 +1247,73 @@ namespace Effekseer
 			};
 		}
 
+		static bool TryGetWritableDataNode(string command, JObject parameters, out string automationNodeId, out Data.Node node, out string error)
+		{
+			automationNodeId = null;
+			node = null;
+
+			if (!TryGetStringParameter(parameters, "automationNodeId", out automationNodeId, out error))
+			{
+				return false;
+			}
+
+			var found = FindNodeByAutomationNodeId(automationNodeId, out error);
+			if (found == null)
+			{
+				return false;
+			}
+
+			if (!(found is Data.Node regularNode))
+			{
+				error = $"{command} requires a regular node";
+				return false;
+			}
+
+			node = regularNode;
+			return true;
+		}
+
+		static bool TryGetVector3Parameters(JObject parameters, out float x, out float y, out float z, out string error)
+		{
+			x = 0;
+			y = 0;
+			z = 0;
+
+			return TryGetFiniteFloatParameter(parameters, "x", -MaxAutomationFloatAbs, MaxAutomationFloatAbs, out x, out error) &&
+				TryGetFiniteFloatParameter(parameters, "y", -MaxAutomationFloatAbs, MaxAutomationFloatAbs, out y, out error) &&
+				TryGetFiniteFloatParameter(parameters, "z", -MaxAutomationFloatAbs, MaxAutomationFloatAbs, out z, out error);
+		}
+
+		static void SetVector3D(Data.Value.Vector3D value, float x, float y, float z)
+		{
+			Command.CommandManager.StartCollection();
+			try
+			{
+				value.X.SetValue(x);
+				value.Y.SetValue(y);
+				value.Z.SetValue(z);
+			}
+			finally
+			{
+				Command.CommandManager.EndCollection();
+			}
+		}
+
+		static void SetIntWithRandom(Data.Value.IntWithRandom value, int center, int min, int max)
+		{
+			Command.CommandManager.StartCollection();
+			try
+			{
+				value.SetMin(min);
+				value.SetMax(max);
+				value.SetCenter(center);
+			}
+			finally
+			{
+				Command.CommandManager.EndCollection();
+			}
+		}
+
 		static bool TryGetIntParameter(JObject parameters, string name, out int value, out string error)
 		{
 			value = 0;
@@ -1125,6 +1332,83 @@ namespace Effekseer
 			}
 
 			value = parameters.Value<int>(name);
+			return true;
+		}
+
+		static bool TryGetBoundedIntParameter(JObject parameters, string name, int min, int max, out int value, out string error)
+		{
+			value = 0;
+			error = null;
+
+			if (parameters == null || parameters[name] == null)
+			{
+				error = $"params.{name} is required";
+				return false;
+			}
+
+			if (parameters[name].Type != JTokenType.Integer)
+			{
+				error = $"params.{name} must be an integer";
+				return false;
+			}
+
+			long parsed;
+			try
+			{
+				parsed = parameters.Value<long>(name);
+			}
+			catch
+			{
+				error = $"params.{name} is out of range";
+				return false;
+			}
+
+			if (parsed < min || parsed > max)
+			{
+				error = $"params.{name} must be between {min} and {max}";
+				return false;
+			}
+
+			value = (int)parsed;
+			return true;
+		}
+
+		static bool TryGetFiniteFloatParameter(JObject parameters, string name, float min, float max, out float value, out string error)
+		{
+			value = 0;
+			error = null;
+
+			if (parameters == null || parameters[name] == null)
+			{
+				error = $"params.{name} is required";
+				return false;
+			}
+
+			var tokenType = parameters[name].Type;
+			if (tokenType != JTokenType.Integer && tokenType != JTokenType.Float)
+			{
+				error = $"params.{name} must be a finite number";
+				return false;
+			}
+
+			double parsed;
+			try
+			{
+				parsed = parameters.Value<double>(name);
+			}
+			catch
+			{
+				error = $"params.{name} must be a finite number";
+				return false;
+			}
+
+			if (double.IsNaN(parsed) || double.IsInfinity(parsed) || parsed < min || parsed > max)
+			{
+				error = $"params.{name} must be a finite number between {min} and {max}";
+				return false;
+			}
+
+			value = (float)parsed;
 			return true;
 		}
 
