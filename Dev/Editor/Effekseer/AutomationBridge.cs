@@ -177,7 +177,10 @@ namespace Effekseer
 				command == "add_node_to_selected" ||
 				command == "select_node_by_id" ||
 				command == "add_node_to_parent" ||
-				command == "rename_node";
+				command == "rename_node" ||
+				command == "select_node_by_automation_id" ||
+				command == "add_node_to_parent_by_automation_id" ||
+				command == "rename_node_by_automation_id";
 		}
 
 		static JObject ExecuteOnMainThread(string command, JObject parameters)
@@ -220,6 +223,26 @@ namespace Effekseer
 				});
 			}
 
+			if (command == "select_node_by_automation_id")
+			{
+				if (!TryGetStringParameter(parameters, "automationNodeId", out var automationNodeId, out var error))
+				{
+					return CreateError(command, error);
+				}
+
+				var node = FindNodeByAutomationNodeId(automationNodeId, out error);
+				if (node == null)
+				{
+					return CreateError(command, error);
+				}
+
+				Core.SelectedNode = node;
+				return CreateOk(command, new JObject
+				{
+					["selected_node"] = CreateNodePayload(node, automationNodeId)
+				});
+			}
+
 			if (command == "add_node_to_parent")
 			{
 				if (!TryGetIntParameter(parameters, "parentEditorNodeId", out var parentEditorNodeId, out var error))
@@ -257,6 +280,44 @@ namespace Effekseer
 				});
 			}
 
+			if (command == "add_node_to_parent_by_automation_id")
+			{
+				if (!TryGetStringParameter(parameters, "parentAutomationNodeId", out var parentAutomationNodeId, out var error))
+				{
+					return CreateError(command, error);
+				}
+
+				var parent = FindNodeByAutomationNodeId(parentAutomationNodeId, out error);
+				if (parent == null)
+				{
+					return CreateError(command, error);
+				}
+
+				if (parent.GetLayerNumber() >= Constant.NodeLayerLimit)
+				{
+					return CreateError(command, "node layer limit exceeded");
+				}
+
+				var name = parameters.Value<string>("name");
+				if (name != null && !IsValidNodeName(name, out error))
+				{
+					return CreateError(command, error);
+				}
+
+				var added = parent.AddChild();
+				if (name != null)
+				{
+					added.Name.Value = name;
+				}
+
+				var addedAutomationNodeId = CreateChildAutomationNodeId(parentAutomationNodeId, parent.Children.Count - 1);
+				return CreateOk(command, new JObject
+				{
+					["parent_node"] = CreateNodePayload(parent, parentAutomationNodeId),
+					["added_node"] = CreateNodePayload(added, addedAutomationNodeId)
+				});
+			}
+
 			if (command == "rename_node")
 			{
 				if (!TryGetIntParameter(parameters, "editorNodeId", out var editorNodeId, out var error))
@@ -285,6 +346,37 @@ namespace Effekseer
 				return CreateOk(command, new JObject
 				{
 					["renamed_node"] = CreateNodePayload(node)
+				});
+			}
+
+			if (command == "rename_node_by_automation_id")
+			{
+				if (!TryGetStringParameter(parameters, "automationNodeId", out var automationNodeId, out var error))
+				{
+					return CreateError(command, error);
+				}
+
+				var name = parameters.Value<string>("name");
+				if (!IsValidNodeName(name, out error))
+				{
+					return CreateError(command, error);
+				}
+
+				var node = FindNodeByAutomationNodeId(automationNodeId, out error);
+				if (node == null)
+				{
+					return CreateError(command, error);
+				}
+
+				if (node.Parent == null)
+				{
+					return CreateError(command, "root node cannot be renamed");
+				}
+
+				node.Name.Value = name;
+				return CreateOk(command, new JObject
+				{
+					["renamed_node"] = CreateNodePayload(node, automationNodeId)
 				});
 			}
 
@@ -344,6 +436,27 @@ namespace Effekseer
 			return true;
 		}
 
+		static bool TryGetStringParameter(JObject parameters, string name, out string value, out string error)
+		{
+			value = null;
+			error = null;
+
+			if (parameters == null || parameters[name] == null)
+			{
+				error = $"params.{name} is required";
+				return false;
+			}
+
+			if (parameters[name].Type != JTokenType.String)
+			{
+				error = $"params.{name} must be a string";
+				return false;
+			}
+
+			value = parameters.Value<string>(name);
+			return true;
+		}
+
 		static bool IsValidNodeName(string name, out string error)
 		{
 			error = null;
@@ -392,24 +505,115 @@ namespace Effekseer
 			return null;
 		}
 
+		static Data.NodeBase FindNodeByAutomationNodeId(string automationNodeId, out string error)
+		{
+			if (Core.Root == null)
+			{
+				error = "root node is not found";
+				return null;
+			}
+
+			return FindNodeByAutomationNodeId(Core.Root, automationNodeId, out error);
+		}
+
+		static Data.NodeBase FindNodeByAutomationNodeId(Data.NodeBase root, string automationNodeId, out string error)
+		{
+			error = null;
+
+			if (string.IsNullOrEmpty(automationNodeId))
+			{
+				error = "params.automationNodeId must not be empty";
+				return null;
+			}
+
+			var parts = automationNodeId.Split('/');
+			if (parts.Length == 0 || parts[0] != "0")
+			{
+				error = "automationNodeId must start with 0";
+				return null;
+			}
+
+			var node = root;
+			for (int i = 1; i < parts.Length; i++)
+			{
+				if (!int.TryParse(parts[i], out var childIndex) || childIndex < 0 || parts[i] != childIndex.ToString())
+				{
+					error = "automationNodeId contains an invalid index";
+					return null;
+				}
+
+				if (childIndex >= node.Children.Count)
+				{
+					error = "automationNodeId index is out of range";
+					return null;
+				}
+
+				node = node.Children[childIndex];
+			}
+
+			return node;
+		}
+
+		static string FindAutomationNodeId(Data.NodeBase target)
+		{
+			if (Core.Root == null || target == null)
+			{
+				return null;
+			}
+
+			if (Core.Root == target)
+			{
+				return "0";
+			}
+
+			return FindAutomationNodeId(Core.Root, target, "0");
+		}
+
+		static string FindAutomationNodeId(Data.NodeBase parent, Data.NodeBase target, string parentAutomationNodeId)
+		{
+			for (int i = 0; i < parent.Children.Count; i++)
+			{
+				var child = parent.Children[i];
+				var childAutomationNodeId = CreateChildAutomationNodeId(parentAutomationNodeId, i);
+				if (child == target)
+				{
+					return childAutomationNodeId;
+				}
+
+				var found = FindAutomationNodeId(child, target, childAutomationNodeId);
+				if (found != null)
+				{
+					return found;
+				}
+			}
+
+			return null;
+		}
+
+		static string CreateChildAutomationNodeId(string parentAutomationNodeId, int childIndex)
+		{
+			return $"{parentAutomationNodeId}/{childIndex}";
+		}
+
 		static JObject CreateNodeTreePayload()
 		{
 			return new JObject
 			{
-				["root"] = Core.Root != null ? CreateNodeTreeNodePayload(Core.Root) : null
+				["root"] = Core.Root != null ? CreateNodeTreeNodePayload(Core.Root, "0") : null
 			};
 		}
 
-		static JObject CreateNodeTreeNodePayload(Data.NodeBase node)
+		static JObject CreateNodeTreeNodePayload(Data.NodeBase node, string automationNodeId)
 		{
 			var children = new JArray();
 			for (int i = 0; i < node.Children.Count; i++)
 			{
-				children.Add(CreateNodeTreeNodePayload(node.Children[i]));
+				children.Add(CreateNodeTreeNodePayload(node.Children[i], CreateChildAutomationNodeId(automationNodeId, i)));
 			}
 
 			return new JObject
 			{
+				["automationNodeId"] = automationNodeId,
 				["editorNodeId"] = node.EditorNodeId,
 				["name"] = node.Name.Value,
 				["isSelected"] = node == Core.SelectedNode,
@@ -420,8 +624,14 @@ namespace Effekseer
 
 		static JObject CreateNodePayload(Data.NodeBase node)
 		{
+			return CreateNodePayload(node, FindAutomationNodeId(node));
+		}
+
+		static JObject CreateNodePayload(Data.NodeBase node, string automationNodeId)
+		{
 			return new JObject
 			{
+				["automationNodeId"] = automationNodeId,
 				["name"] = node.Name.Value,
 				["editor_node_id"] = node.EditorNodeId,
 				["children_count"] = node.Children.Count

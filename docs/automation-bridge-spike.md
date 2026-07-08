@@ -8,7 +8,7 @@ This spike adds a minimal, opt-in automation bridge for controlling a running Ef
 - Binds only to `127.0.0.1`.
 - Enabled by `--automation-port <port>` or `EFFEKSEER_AUTOMATION_PORT=<port>`.
 - Uses JSON-line TCP: one JSON object per line, one JSON object response per line.
-- Allows only explicit commands: `ping`, `get_status`, `get_node_tree`, `add_node_to_selected`, `select_node_by_id`, `add_node_to_parent`, and `rename_node`.
+- Allows only explicit commands: `ping`, `get_status`, `get_node_tree`, `add_node_to_selected`, `select_node_by_id`, `add_node_to_parent`, `rename_node`, `select_node_by_automation_id`, `add_node_to_parent_by_automation_id`, and `rename_node_by_automation_id`.
 - Does not execute shell commands or arbitrary C# code.
 - Does not use UI clicks or GUI automation.
 
@@ -64,6 +64,15 @@ Requests support an optional `params` object. Existing requests without `params`
 {"command":"select_node_by_id","params":{"editorNodeId":1}}
 ```
 
+`editorNodeId` remains in responses because Effekseer already exposes it internally, but MCP clients should prefer `automationNodeId` for edit operations. `automationNodeId` is generated from the current node tree path:
+
+- Root: `0`
+- Root's first child: `0/0`
+- Root's second child: `0/1`
+- First child under `0/1`: `0/1/0`
+
+Because this is a path ID, clients should refresh it with `get_node_tree` after structural edits that can change sibling indexes.
+
 ### ping
 
 Request:
@@ -89,7 +98,7 @@ Request:
 Response shape:
 
 ```json
-{"ok":true,"command":"get_status","result":{"running":true,"has_selected_node":true,"selected_node":{"name":"Node","editor_node_id":0,"children_count":0}}}
+{"ok":true,"command":"get_status","result":{"running":true,"has_selected_node":true,"selected_node":{"automationNodeId":"0/0","name":"Node","editor_node_id":0,"children_count":0}}}
 ```
 
 `editor_node_id` can be `0` before the editor/exporter assigns stable IDs.
@@ -111,7 +120,7 @@ If no node is selected:
 If a node is selected:
 
 ```json
-{"ok":true,"command":"add_node_to_selected","result":{"selected_node":{"name":"Node","editor_node_id":0,"children_count":1},"added_node":{"name":"Node","editor_node_id":0,"children_count":0}}}
+{"ok":true,"command":"add_node_to_selected","result":{"selected_node":{"automationNodeId":"0/0","name":"Node","editor_node_id":0,"children_count":1},"added_node":{"automationNodeId":"0/0/0","name":"Node","editor_node_id":0,"children_count":0}}}
 ```
 
 ### get_node_tree
@@ -125,7 +134,7 @@ Request:
 Response shape:
 
 ```json
-{"ok":true,"command":"get_node_tree","result":{"root":{"editorNodeId":0,"name":"Root","isSelected":false,"childCount":1,"children":[{"editorNodeId":0,"name":"Node","isSelected":true,"childCount":0,"children":[]}]}}}
+{"ok":true,"command":"get_node_tree","result":{"root":{"automationNodeId":"0","editorNodeId":0,"name":"Root","isSelected":false,"childCount":1,"children":[{"automationNodeId":"0/0","editorNodeId":0,"name":"Node","isSelected":true,"childCount":0,"children":[]}]}}}
 ```
 
 The response contains only editor node metadata needed by automation clients. It does not include project paths, resource paths, or other local filesystem information.
@@ -141,7 +150,7 @@ Request:
 If the node is found, the editor selection is updated on the main/UI thread:
 
 ```json
-{"ok":true,"command":"select_node_by_id","result":{"selected_node":{"name":"Node","editor_node_id":1,"children_count":0}}}
+{"ok":true,"command":"select_node_by_id","result":{"selected_node":{"automationNodeId":"0/0","name":"Node","editor_node_id":1,"children_count":0}}}
 ```
 
 If the node is not found:
@@ -163,7 +172,7 @@ Request:
 Response shape:
 
 ```json
-{"ok":true,"command":"add_node_to_parent","result":{"parent_node":{"name":"Node","editor_node_id":1,"children_count":1},"added_node":{"name":"Child","editor_node_id":0,"children_count":0}}}
+{"ok":true,"command":"add_node_to_parent","result":{"parent_node":{"automationNodeId":"0/0","name":"Node","editor_node_id":1,"children_count":1},"added_node":{"automationNodeId":"0/0/0","name":"Child","editor_node_id":0,"children_count":0}}}
 ```
 
 If the parent is not found:
@@ -185,13 +194,63 @@ Request:
 Response shape:
 
 ```json
-{"ok":true,"command":"rename_node","result":{"renamed_node":{"name":"Renamed","editor_node_id":1,"children_count":0}}}
+{"ok":true,"command":"rename_node","result":{"renamed_node":{"automationNodeId":"0/0","name":"Renamed","editor_node_id":1,"children_count":0}}}
 ```
 
 If the root node is targeted:
 
 ```json
 {"ok":false,"command":"rename_node","error":"root node cannot be renamed"}
+```
+
+### select_node_by_automation_id
+
+Request:
+
+```json
+{"command":"select_node_by_automation_id","params":{"automationNodeId":"0/0"}}
+```
+
+Response shape:
+
+```json
+{"ok":true,"command":"select_node_by_automation_id","result":{"selected_node":{"automationNodeId":"0/0","name":"Node","editor_node_id":0,"children_count":0}}}
+```
+
+Invalid paths, out-of-range indexes, and missing nodes return an error:
+
+```json
+{"ok":false,"command":"select_node_by_automation_id","error":"automationNodeId index is out of range"}
+```
+
+### add_node_to_parent_by_automation_id
+
+Request:
+
+```json
+{"command":"add_node_to_parent_by_automation_id","params":{"parentAutomationNodeId":"0/0","name":"Child"}}
+```
+
+`params.name` is optional. If present, it must be non-empty and 128 characters or less.
+
+Response shape:
+
+```json
+{"ok":true,"command":"add_node_to_parent_by_automation_id","result":{"parent_node":{"automationNodeId":"0/0","name":"Node","editor_node_id":0,"children_count":1},"added_node":{"automationNodeId":"0/0/0","name":"Child","editor_node_id":0,"children_count":0}}}
+```
+
+### rename_node_by_automation_id
+
+Request:
+
+```json
+{"command":"rename_node_by_automation_id","params":{"automationNodeId":"0/0","name":"Renamed"}}
+```
+
+Response shape:
+
+```json
+{"ok":true,"command":"rename_node_by_automation_id","result":{"renamed_node":{"automationNodeId":"0/0","name":"Renamed","editor_node_id":0,"children_count":0}}}
 ```
 
 ## Usage examples
@@ -227,7 +286,7 @@ $client.Close()
 - This spike has no authentication. It relies on opt-in enablement and loopback-only binding.
 - `add_node_to_selected` currently mirrors the existing `Commands.AddNode()` layer-limit behavior but returns the newly created node by calling `Core.SelectedNode.AddChild()` directly.
 - Response waiting has a 30 second timeout if the editor main loop is blocked.
-- Future MCP-facing work should define a versioned command schema, request IDs, richer error codes, and more explicit node identifiers.
+- Future MCP-facing work should define a versioned command schema, request IDs, and richer error codes.
 
 ## Security policy
 
@@ -242,7 +301,8 @@ $client.Close()
 
 ## Known limitations
 
-- `EditorNodeId` can be `0` before the editor/exporter assigns IDs. Automation clients should call `get_node_tree` and use the IDs currently reported by the running editor.
+- `EditorNodeId` can be `0` before the editor/exporter assigns IDs. MCP clients should prefer `automationNodeId` for edit operations.
+- `automationNodeId` is a path into the current tree. It is stable while the tree shape before that node is unchanged, but sibling insertions/removals can change path indexes. Refresh with `get_node_tree` after structural edits.
 - `rename_node` rejects the root node for now.
 - Node names accepted through the bridge are limited to 128 characters.
 - The bridge has no authentication beyond opt-in loopback binding.
