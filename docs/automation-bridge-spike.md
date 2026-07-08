@@ -8,7 +8,7 @@ This spike adds a minimal, opt-in automation bridge for controlling a running Ef
 - Binds only to `127.0.0.1`.
 - Enabled by `--automation-port <port>` or `EFFEKSEER_AUTOMATION_PORT=<port>`.
 - Uses JSON-line TCP: one JSON object per line, one JSON object response per line.
-- Allows only explicit commands: `ping`, `get_status`, `get_node_tree`, `add_node_to_selected`, `select_node_by_id`, `add_node_to_parent`, `rename_node`, `select_node_by_automation_id`, `add_node_to_parent_by_automation_id`, `rename_node_by_automation_id`, `remove_node_by_automation_id`, `duplicate_node_by_automation_id`, `insert_parent_node_by_automation_id`, `undo`, `redo`, `play_viewer`, `stop_viewer`, `step_viewer`, and `back_step_viewer`.
+- Allows only explicit commands: `ping`, `get_status`, `get_node_tree`, `add_node_to_selected`, `select_node_by_id`, `add_node_to_parent`, `rename_node`, `select_node_by_automation_id`, `add_node_to_parent_by_automation_id`, `rename_node_by_automation_id`, `remove_node_by_automation_id`, `duplicate_node_by_automation_id`, `insert_parent_node_by_automation_id`, `undo`, `redo`, `play_viewer`, `stop_viewer`, `step_viewer`, `back_step_viewer`, `get_node_basic_info_by_automation_id`, and `get_node_parameter_groups_by_automation_id`.
 - Does not execute shell commands or arbitrary C# code.
 - Does not use UI clicks or GUI automation.
 
@@ -405,6 +405,55 @@ Response shape:
 {"ok":true,"command":"back_step_viewer","result":{"running":true,"viewer":{"is_playing":true,"is_paused":true},"status":{"running":true,"has_selected_node":true,"selected_node":{"automationNodeId":"0/0","name":"Node","editor_node_id":0,"children_count":0}}}}
 ```
 
+## Parameter inspection commands
+
+Parameter inspection commands are read-only. They are intended to help MCP/AI clients understand which node is targeted and which coarse parameter groups exist before a later parameter-write phase. They do not accept arbitrary property names, do not dump all reflected properties, and do not return file paths or local resource paths.
+
+Investigation notes:
+
+- `Data.NodeBase` owns the common node-level fields: `Name`, `IsRendered`, `Parent`, `Children`, and `EditorNodeId`.
+- `Data.NodeRoot` derives from `NodeBase` and owns the effect path internally, but the bridge does not expose that path.
+- Regular `Data.Node` adds editable value objects: `CommonValues`, `LocationValues`, `RotationValues`, `ScalingValues`, `LocationAbsValues`, `GenerationLocationValues`, `DepthValues`, `RendererCommonValues`, `DrawingValues`, `SoundValues`, `AdvancedRendererCommonValuesValues`, `KillRulesValues`, `CollisionsValues`, and `GpuParticles`.
+- GUI dock panels use `BindableComponent.ParameterList.SetValue(...)` with those objects, for example common/basic settings, spawning method, position, rotation, scale, render settings, sound, kill rules, collisions, and GPU particles.
+- Safe for this phase: node identity, tree/layer counts, `IsRendered`, class/type names, and allowlisted coarse group names.
+- Deferred for a later phase: writing parameters, texture replacement, file open/save, arbitrary reflection dumps, and arbitrary property-name reads.
+
+### get_node_basic_info_by_automation_id
+
+Request:
+
+```json
+{"command":"get_node_basic_info_by_automation_id","params":{"automationNodeId":"0/1"}}
+```
+
+Response shape:
+
+```json
+{"ok":true,"command":"get_node_basic_info_by_automation_id","result":{"automationNodeId":"0/1","name":"Node","editorNodeId":0,"childCount":0,"parentAutomationNodeId":"0","isSelected":false,"isRendered":true,"nodeType":"node","className":"Node","layerNumber":2,"deepestLayerNumberInChildren":1}}
+```
+
+### get_node_parameter_groups_by_automation_id
+
+Request:
+
+```json
+{"command":"get_node_parameter_groups_by_automation_id","params":{"automationNodeId":"0/1"}}
+```
+
+Response shape for a regular node:
+
+```json
+{"ok":true,"command":"get_node_parameter_groups_by_automation_id","result":{"automationNodeId":"0/1","name":"Node","groups":["node_base","common","generation","location","rotation","scale","local_force_field","depth","renderer_common","drawing","sound","advanced_render","kill_rules","collisions","gpu_particles"]}}
+```
+
+Response shape for the root node:
+
+```json
+{"ok":true,"command":"get_node_parameter_groups_by_automation_id","result":{"automationNodeId":"0","name":"Root","groups":["node_base"]}}
+```
+
+Parameter write commands such as `set_parameter` are intentionally not part of this phase.
+
 ## Usage examples
 
 Start Effekseer:
@@ -450,6 +499,7 @@ $client.Close()
 - The network/client tasks parse JSON and enqueue command data only. They do not read or mutate `Core`, `Core.SelectedNode`, or node objects directly.
 - Editor state reads and mutations run from `AutomationBridge.Update()` on the main/UI thread.
 - Viewer playback commands run from `AutomationBridge.Update()` on the main/UI thread and call existing editor command methods; they do not click or automate GUI controls.
+- Parameter inspection commands are read-only and expose only allowlisted summary fields/group names.
 - Responses intentionally avoid absolute paths and local resource paths.
 
 ## Known limitations
@@ -459,3 +509,4 @@ $client.Close()
 - `rename_node` rejects the root node for now.
 - Node names accepted through the bridge are limited to 128 characters.
 - The bridge has no authentication beyond opt-in loopback binding.
+- Parameter inspection currently reports group availability only. It does not enumerate or mutate individual parameter values.

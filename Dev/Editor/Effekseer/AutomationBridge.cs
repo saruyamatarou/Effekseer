@@ -189,7 +189,9 @@ namespace Effekseer
 				command == "play_viewer" ||
 				command == "stop_viewer" ||
 				command == "step_viewer" ||
-				command == "back_step_viewer";
+				command == "back_step_viewer" ||
+				command == "get_node_basic_info_by_automation_id" ||
+				command == "get_node_parameter_groups_by_automation_id";
 		}
 
 		static JObject ExecuteOnMainThread(string command, JObject parameters)
@@ -230,6 +232,38 @@ namespace Effekseer
 			if (command == "back_step_viewer")
 			{
 				return ExecuteViewerCommand(command, Effekseer.GUI.Commands.BackStep);
+			}
+
+			if (command == "get_node_basic_info_by_automation_id")
+			{
+				if (!TryGetStringParameter(parameters, "automationNodeId", out var automationNodeId, out var error))
+				{
+					return CreateError(command, error);
+				}
+
+				var node = FindNodeByAutomationNodeId(automationNodeId, out error);
+				if (node == null)
+				{
+					return CreateError(command, error);
+				}
+
+				return CreateOk(command, CreateNodeBasicInfoPayload(node, automationNodeId));
+			}
+
+			if (command == "get_node_parameter_groups_by_automation_id")
+			{
+				if (!TryGetStringParameter(parameters, "automationNodeId", out var automationNodeId, out var error))
+				{
+					return CreateError(command, error);
+				}
+
+				var node = FindNodeByAutomationNodeId(automationNodeId, out error);
+				if (node == null)
+				{
+					return CreateError(command, error);
+				}
+
+				return CreateOk(command, CreateNodeParameterGroupsPayload(node, automationNodeId));
 			}
 
 			if (command == "select_node_by_id")
@@ -643,6 +677,56 @@ namespace Effekseer
 					["is_paused"] = viewer.IsPaused
 				} : null,
 				["status"] = CreateStatusPayload()
+			};
+		}
+
+		static JObject CreateNodeBasicInfoPayload(Data.NodeBase node, string automationNodeId)
+		{
+			var parentAutomationNodeId = node.Parent != null ? FindAutomationNodeId(node.Parent) : null;
+			return new JObject
+			{
+				["automationNodeId"] = automationNodeId,
+				["name"] = node.Name.Value,
+				["editorNodeId"] = node.EditorNodeId,
+				["childCount"] = node.Children.Count,
+				["parentAutomationNodeId"] = parentAutomationNodeId,
+				["isSelected"] = node == Core.SelectedNode,
+				["isRendered"] = node.IsRendered.Value,
+				["nodeType"] = node is Data.NodeRoot ? "root" : "node",
+				["className"] = node.GetType().Name,
+				["layerNumber"] = node.GetLayerNumber(),
+				["deepestLayerNumberInChildren"] = node.GetDeepestLayerNumberInChildren()
+			};
+		}
+
+		static JObject CreateNodeParameterGroupsPayload(Data.NodeBase node, string automationNodeId)
+		{
+			var groups = new JArray();
+			groups.Add("node_base");
+
+			if (node is Data.Node)
+			{
+				groups.Add("common");
+				groups.Add("generation");
+				groups.Add("location");
+				groups.Add("rotation");
+				groups.Add("scale");
+				groups.Add("local_force_field");
+				groups.Add("depth");
+				groups.Add("renderer_common");
+				groups.Add("drawing");
+				groups.Add("sound");
+				groups.Add("advanced_render");
+				groups.Add("kill_rules");
+				groups.Add("collisions");
+				groups.Add("gpu_particles");
+			}
+
+			return new JObject
+			{
+				["automationNodeId"] = automationNodeId,
+				["name"] = node.Name.Value,
+				["groups"] = groups
 			};
 		}
 
