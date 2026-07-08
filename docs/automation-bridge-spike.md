@@ -8,7 +8,7 @@ This spike adds a minimal, opt-in automation bridge for controlling a running Ef
 - Binds only to `127.0.0.1`.
 - Enabled by `--automation-port <port>` or `EFFEKSEER_AUTOMATION_PORT=<port>`.
 - Uses JSON-line TCP: one JSON object per line, one JSON object response per line.
-- Allows only explicit commands: `ping`, `get_status`, `get_node_tree`, `add_node_to_selected`, `select_node_by_id`, `add_node_to_parent`, `rename_node`, `select_node_by_automation_id`, `add_node_to_parent_by_automation_id`, `rename_node_by_automation_id`, `remove_node_by_automation_id`, `duplicate_node_by_automation_id`, `insert_parent_node_by_automation_id`, `undo`, and `redo`.
+- Allows only explicit commands: `ping`, `get_status`, `get_node_tree`, `add_node_to_selected`, `select_node_by_id`, `add_node_to_parent`, `rename_node`, `select_node_by_automation_id`, `add_node_to_parent_by_automation_id`, `rename_node_by_automation_id`, `remove_node_by_automation_id`, `duplicate_node_by_automation_id`, `insert_parent_node_by_automation_id`, `undo`, `redo`, `play_viewer`, `stop_viewer`, `step_viewer`, and `back_step_viewer`.
 - Does not execute shell commands or arbitrary C# code.
 - Does not use UI clicks or GUI automation.
 
@@ -345,6 +345,66 @@ If there is nothing to redo:
 {"ok":false,"command":"redo","error":"nothing to redo"}
 ```
 
+## Viewer commands
+
+Viewer commands control playback in the Effekseer Editor viewer. They do not edit effect data and do not use GUI clicks or UI automation. The bridge reuses the existing editor command methods: `Effekseer.GUI.Commands.Play`, `Stop`, `Step`, and `BackStep`.
+
+### play_viewer
+
+Request:
+
+```json
+{"command":"play_viewer"}
+```
+
+Response shape:
+
+```json
+{"ok":true,"command":"play_viewer","result":{"running":true,"viewer":{"is_playing":true,"is_paused":false},"status":{"running":true,"has_selected_node":true,"selected_node":{"automationNodeId":"0/0","name":"Node","editor_node_id":0,"children_count":0}}}}
+```
+
+### stop_viewer
+
+Request:
+
+```json
+{"command":"stop_viewer"}
+```
+
+Response shape:
+
+```json
+{"ok":true,"command":"stop_viewer","result":{"running":true,"viewer":{"is_playing":false,"is_paused":false},"status":{"running":true,"has_selected_node":true,"selected_node":{"automationNodeId":"0/0","name":"Node","editor_node_id":0,"children_count":0}}}}
+```
+
+### step_viewer
+
+Request:
+
+```json
+{"command":"step_viewer"}
+```
+
+Response shape:
+
+```json
+{"ok":true,"command":"step_viewer","result":{"running":true,"viewer":{"is_playing":true,"is_paused":true},"status":{"running":true,"has_selected_node":true,"selected_node":{"automationNodeId":"0/0","name":"Node","editor_node_id":0,"children_count":0}}}}
+```
+
+### back_step_viewer
+
+Request:
+
+```json
+{"command":"back_step_viewer"}
+```
+
+Response shape:
+
+```json
+{"ok":true,"command":"back_step_viewer","result":{"running":true,"viewer":{"is_playing":true,"is_paused":true},"status":{"running":true,"has_selected_node":true,"selected_node":{"automationNodeId":"0/0","name":"Node","editor_node_id":0,"children_count":0}}}}
+```
+
 ## Usage examples
 
 Start Effekseer:
@@ -389,6 +449,7 @@ $client.Close()
 - The bridge does not execute shell commands or arbitrary C# code.
 - The network/client tasks parse JSON and enqueue command data only. They do not read or mutate `Core`, `Core.SelectedNode`, or node objects directly.
 - Editor state reads and mutations run from `AutomationBridge.Update()` on the main/UI thread.
+- Viewer playback commands run from `AutomationBridge.Update()` on the main/UI thread and call existing editor command methods; they do not click or automate GUI controls.
 - Responses intentionally avoid absolute paths and local resource paths.
 
 ## Known limitations

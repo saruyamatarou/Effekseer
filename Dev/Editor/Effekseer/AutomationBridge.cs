@@ -185,7 +185,11 @@ namespace Effekseer
 				command == "duplicate_node_by_automation_id" ||
 				command == "insert_parent_node_by_automation_id" ||
 				command == "undo" ||
-				command == "redo";
+				command == "redo" ||
+				command == "play_viewer" ||
+				command == "stop_viewer" ||
+				command == "step_viewer" ||
+				command == "back_step_viewer";
 		}
 
 		static JObject ExecuteOnMainThread(string command, JObject parameters)
@@ -206,6 +210,26 @@ namespace Effekseer
 			if (command == "get_node_tree")
 			{
 				return CreateOk(command, CreateNodeTreePayload());
+			}
+
+			if (command == "play_viewer")
+			{
+				return ExecuteViewerCommand(command, Effekseer.GUI.Commands.Play);
+			}
+
+			if (command == "stop_viewer")
+			{
+				return ExecuteViewerCommand(command, Effekseer.GUI.Commands.Stop);
+			}
+
+			if (command == "step_viewer")
+			{
+				return ExecuteViewerCommand(command, Effekseer.GUI.Commands.Step);
+			}
+
+			if (command == "back_step_viewer")
+			{
+				return ExecuteViewerCommand(command, Effekseer.GUI.Commands.BackStep);
 			}
 
 			if (command == "select_node_by_id")
@@ -594,6 +618,31 @@ namespace Effekseer
 				["running"] = true,
 				["has_selected_node"] = selected != null,
 				["selected_node"] = selected != null ? CreateNodePayload(selected) : null
+			};
+		}
+
+		static JObject ExecuteViewerCommand(string command, Func<bool> viewerCommand)
+		{
+			if (!viewerCommand())
+			{
+				return CreateError(command, "viewer command failed");
+			}
+
+			return CreateOk(command, CreateViewerStatusPayload());
+		}
+
+		static JObject CreateViewerStatusPayload()
+		{
+			var viewer = Effekseer.GUI.Manager.Viewer;
+			return new JObject
+			{
+				["running"] = true,
+				["viewer"] = viewer != null ? new JObject
+				{
+					["is_playing"] = viewer.IsPlaying,
+					["is_paused"] = viewer.IsPaused
+				} : null,
+				["status"] = CreateStatusPayload()
 			};
 		}
 
