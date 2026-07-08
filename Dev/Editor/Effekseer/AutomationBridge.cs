@@ -31,6 +31,7 @@ namespace Effekseer
 			"get_node_tree",
 			"save_project_to_workspace",
 			"open_project_from_workspace",
+			"export_runtime_effect_to_workspace",
 			"add_node_to_selected",
 			"select_node_by_id",
 			"add_node_to_parent",
@@ -297,6 +298,34 @@ namespace Effekseer
 				{
 					["path"] = workspaceRelativePath,
 					["status"] = CreateStatusPayload()
+				});
+			}
+
+			if (command == "export_runtime_effect_to_workspace")
+			{
+				if (!TryGetStringParameter(parameters, "path", out var path, out var error))
+				{
+					return CreateError(command, error);
+				}
+
+				if (!TryValidateWorkspaceRuntimeEffectPath(path, out var fullPath, out var workspaceRelativePath, out error))
+				{
+					return CreateError(command, error);
+				}
+
+				var parentDirectory = Path.GetDirectoryName(fullPath);
+				if (!string.IsNullOrEmpty(parentDirectory))
+				{
+					Directory.CreateDirectory(parentDirectory);
+				}
+
+				var exporter = new Binary.Exporter();
+				var binary = exporter.Export(Core.Root, Core.Option.Magnification);
+				File.WriteAllBytes(fullPath, binary);
+				return CreateOk(command, new JObject
+				{
+					["path"] = workspaceRelativePath,
+					["bytes"] = binary.Length
 				});
 			}
 
@@ -1033,6 +1062,24 @@ namespace Effekseer
 			if (mustExist && !File.Exists(fullPath))
 			{
 				error = "project file is not found";
+				fullPath = null;
+				workspaceRelativePath = null;
+				return false;
+			}
+
+			return true;
+		}
+
+		bool TryValidateWorkspaceRuntimeEffectPath(string path, out string fullPath, out string workspaceRelativePath, out string error)
+		{
+			if (!TryValidateWorkspacePath(path, out fullPath, out workspaceRelativePath, out error))
+			{
+				return false;
+			}
+
+			if (!string.Equals(Path.GetExtension(fullPath), ".efk", StringComparison.OrdinalIgnoreCase))
+			{
+				error = "path extension must be .efk";
 				fullPath = null;
 				workspaceRelativePath = null;
 				return false;

@@ -57,7 +57,7 @@ A separate bridge is smaller for this spike and avoids changing existing network
 
 ## File operation safety design
 
-File/project operations are restricted to an explicitly configured automation workspace root. The current implementation supports project save/open for `.efkefc` files only. Runtime export, texture/material import, arbitrary file reads, directory listing, and generic path operations are intentionally not implemented yet.
+File/project operations are restricted to an explicitly configured automation workspace root. The current implementation supports project save/open for `.efkefc` files and runtime binary export for `.efk` files. glTF/glb export, texture/material import, arbitrary file reads, directory listing, and generic path operations are intentionally not implemented yet.
 
 Workspace root configuration:
 
@@ -81,9 +81,11 @@ Safety policy:
 - Absolute paths are accepted only if their normalized form is still under the workspace root.
 - Parent directory traversal segments such as `..` are rejected.
 - Project open/save paths must use the `.efkefc` extension.
+- Runtime effect export paths must use the `.efk` extension.
 - Success responses should return workspace-relative paths only, not unnecessary absolute local paths.
 - `save_project_to_workspace` may create the destination parent directory under the validated workspace path.
 - `open_project_from_workspace` requires the target file to exist.
+- `export_runtime_effect_to_workspace` may create the destination parent directory under the validated workspace path.
 
 The intended architecture is double validation: `effekseer-mcp` should validate paths against its own workspace boundary before sending a request, and the Effekseer Automation Bridge should validate again before touching the filesystem. The bridge-side validation is the final editor-side guard and must not trust the MCP client.
 
@@ -164,6 +166,24 @@ Response shape:
 ```
 
 The response returns only the workspace-relative path and a `get_status`-style status payload.
+
+### export_runtime_effect_to_workspace
+
+Request:
+
+```json
+{"command":"export_runtime_effect_to_workspace","params":{"path":"outputs/test.efk"}}
+```
+
+The path is validated against the automation workspace. The extension must be `.efk`. Parent directories under the workspace may be created. The bridge exports `Core.Root` with `Binary.Exporter` using `Core.Option.Magnification`.
+
+Response shape:
+
+```json
+{"ok":true,"command":"export_runtime_effect_to_workspace","result":{"path":"outputs/test.efk","bytes":12345}}
+```
+
+The response returns only the workspace-relative path. `.efkefc` is the editable Effekseer project format; `.efk` is the runtime effect binary format.
 
 ```json
 {"command":"ping"}
@@ -800,4 +820,4 @@ $client.Close()
 - The bridge has no authentication beyond opt-in loopback binding.
 - Parameter value inspection currently covers base, generation/common, location, rotation, and scale summaries only. It does not mutate values and does not expand full FCurve/NURBS data.
 - Parameter write currently covers only `NodeBase.IsRendered`, `CommonValues.MaxGeneration`, `CommonValues.Life`, and fixed location/rotation/scale vectors. Undo/redo should use existing value object command routes, but end-to-end editor smoke testing should keep validating this as the write surface expands.
-- File operations currently cover only `.efkefc` project save/open inside the automation workspace. Runtime export is planned for a later phase.
+- File operations currently cover only `.efkefc` project save/open and `.efk` runtime binary export inside the automation workspace. glTF/glb export and asset import are planned for later phases.
