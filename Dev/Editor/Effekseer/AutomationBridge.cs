@@ -68,6 +68,12 @@ namespace Effekseer
 			"set_node_fixed_location_by_automation_id",
 			"set_node_fixed_rotation_by_automation_id",
 			"set_node_fixed_scale_by_automation_id",
+			"set_node_generation_time_by_automation_id",
+			"set_node_location_type_by_automation_id",
+			"set_node_location_pva_by_automation_id",
+			"set_node_scale_type_by_automation_id",
+			"set_node_scale_pva_by_automation_id",
+			"set_node_fade_in_out_by_automation_id",
 			"set_node_color_all_fixed_rgba_by_automation_id",
 			"set_node_sprite_corner_colors_fixed_rgba_by_automation_id",
 			"set_node_alpha_blend_by_automation_id",
@@ -895,6 +901,183 @@ namespace Effekseer
 					["before"] = before,
 					["after"] = after,
 					["transformParameters"] = CreateNodeTransformParametersPayload(regularNode, automationNodeId)
+				});
+			}
+
+			if (command == "set_node_generation_time_by_automation_id")
+			{
+				if (!TryGetWritableDataNode(command, parameters, out var automationNodeId, out var regularNode, out var error) ||
+					!TryGetFloatRandomParameters(parameters, out var center, out var min, out var max, out error))
+				{
+					return CreateError(command, error);
+				}
+
+				var target = regularNode.CommonValues.Generation.GenerationTime;
+				var before = CreateFloatWithRandomPayload(target);
+				SetFloatWithRandom(target, center, min, max);
+				var after = CreateFloatWithRandomPayload(target);
+				return CreateOk(command, new JObject
+				{
+					["automationNodeId"] = automationNodeId,
+					["name"] = regularNode.Name.Value,
+					["before"] = before,
+					["after"] = after,
+					["generationParameters"] = CreateNodeGenerationParametersPayload(regularNode, automationNodeId)
+				});
+			}
+
+			if (command == "set_node_location_type_by_automation_id")
+			{
+				if (!TryGetWritableDataNode(command, parameters, out var automationNodeId, out var regularNode, out var error) ||
+					!TryGetStringParameter(parameters, "locationType", out var locationTypeText, out error) ||
+					!TryParseLocationType(locationTypeText, out var locationType, out error))
+				{
+					return CreateError(command, error);
+				}
+
+				var target = regularNode.LocationValues.Type;
+				var before = CreateEnumPayload(target);
+				target.SetValue(locationType);
+				var after = CreateEnumPayload(target);
+				return CreateOk(command, new JObject
+				{
+					["automationNodeId"] = automationNodeId,
+					["name"] = regularNode.Name.Value,
+					["before"] = before,
+					["after"] = after,
+					["transformParameters"] = CreateNodeTransformParametersPayload(regularNode, automationNodeId)
+				});
+			}
+
+			if (command == "set_node_location_pva_by_automation_id")
+			{
+				if (!TryGetWritableDataNode(command, parameters, out var automationNodeId, out var regularNode, out var error) ||
+					!TryGetVector3DWithRandomObjectParameter(parameters, "location", out var location, out error) ||
+					!TryGetVector3DWithRandomObjectParameter(parameters, "velocity", out var velocity, out error) ||
+					!TryGetVector3DWithRandomObjectParameter(parameters, "acceleration", out var acceleration, out error))
+				{
+					return CreateError(command, error);
+				}
+
+				var target = regularNode.LocationValues.PVA;
+				var before = CreateLocationParametersPayload(regularNode.LocationValues);
+				Command.CommandManager.StartCollection();
+				try
+				{
+					SetVector3DWithRandom(target.Location, location);
+					SetVector3DWithRandom(target.Velocity, velocity);
+					SetVector3DWithRandom(target.Acceleration, acceleration);
+				}
+				finally
+				{
+					Command.CommandManager.EndCollection();
+				}
+
+				var after = CreateLocationParametersPayload(regularNode.LocationValues);
+				return CreateOk(command, new JObject
+				{
+					["automationNodeId"] = automationNodeId,
+					["name"] = regularNode.Name.Value,
+					["before"] = before,
+					["after"] = after,
+					["transformParameters"] = CreateNodeTransformParametersPayload(regularNode, automationNodeId)
+				});
+			}
+
+			if (command == "set_node_scale_type_by_automation_id")
+			{
+				if (!TryGetWritableDataNode(command, parameters, out var automationNodeId, out var regularNode, out var error) ||
+					!TryGetStringParameter(parameters, "scaleType", out var scaleTypeText, out error) ||
+					!TryParseScaleType(scaleTypeText, out var scaleType, out error))
+				{
+					return CreateError(command, error);
+				}
+
+				var target = regularNode.ScalingValues.Type;
+				var before = CreateEnumPayload(target);
+				target.SetValue(scaleType);
+				var after = CreateEnumPayload(target);
+				return CreateOk(command, new JObject
+				{
+					["automationNodeId"] = automationNodeId,
+					["name"] = regularNode.Name.Value,
+					["before"] = before,
+					["after"] = after,
+					["transformParameters"] = CreateNodeTransformParametersPayload(regularNode, automationNodeId)
+				});
+			}
+
+			if (command == "set_node_scale_pva_by_automation_id")
+			{
+				if (!TryGetWritableDataNode(command, parameters, out var automationNodeId, out var regularNode, out var error) ||
+					!TryGetVector3DWithRandomObjectParameter(parameters, "scale", out var scale, out error) ||
+					!TryGetVector3DWithRandomObjectParameter(parameters, "velocity", out var velocity, out error) ||
+					!TryGetVector3DWithRandomObjectParameter(parameters, "acceleration", out var acceleration, out error))
+				{
+					return CreateError(command, error);
+				}
+
+				var target = regularNode.ScalingValues.PVA;
+				var before = CreateScaleParametersPayload(regularNode.ScalingValues);
+				Command.CommandManager.StartCollection();
+				try
+				{
+					SetVector3DWithRandom(target.Scale, scale);
+					SetVector3DWithRandom(target.Velocity, velocity);
+					SetVector3DWithRandom(target.Acceleration, acceleration);
+				}
+				finally
+				{
+					Command.CommandManager.EndCollection();
+				}
+
+				var after = CreateScaleParametersPayload(regularNode.ScalingValues);
+				return CreateOk(command, new JObject
+				{
+					["automationNodeId"] = automationNodeId,
+					["name"] = regularNode.Name.Value,
+					["before"] = before,
+					["after"] = after,
+					["transformParameters"] = CreateNodeTransformParametersPayload(regularNode, automationNodeId)
+				});
+			}
+
+			if (command == "set_node_fade_in_out_by_automation_id")
+			{
+				if (!TryGetWritableDataNode(command, parameters, out var automationNodeId, out var regularNode, out var error) ||
+					!TryGetStringParameter(parameters, "fadeInType", out var fadeInTypeText, out error) ||
+					!TryParseFadeInType(fadeInTypeText, out var fadeInType, out error) ||
+					!TryGetFiniteFloatParameter(parameters, "fadeInFrame", 0, MaxAutomationFloatAbs, out var fadeInFrame, out error) ||
+					!TryGetStringParameter(parameters, "fadeOutType", out var fadeOutTypeText, out error) ||
+					!TryParseFadeOutType(fadeOutTypeText, out var fadeOutType, out error) ||
+					!TryGetFiniteFloatParameter(parameters, "fadeOutFrame", 0, MaxAutomationFloatAbs, out var fadeOutFrame, out error))
+				{
+					return CreateError(command, error);
+				}
+
+				var target = regularNode.RendererCommonValues;
+				var before = CreateRendererFadePayload(target);
+				Command.CommandManager.StartCollection();
+				try
+				{
+					target.FadeInType.SetValue(fadeInType);
+					target.FadeIn.Frame.SetValue(fadeInFrame);
+					target.FadeOutType.SetValue(fadeOutType);
+					target.FadeOut.Frame.SetValue(fadeOutFrame);
+				}
+				finally
+				{
+					Command.CommandManager.EndCollection();
+				}
+
+				var after = CreateRendererFadePayload(target);
+				return CreateOk(command, new JObject
+				{
+					["automationNodeId"] = automationNodeId,
+					["name"] = regularNode.Name.Value,
+					["before"] = before,
+					["after"] = after,
+					["rendererParameters"] = CreateNodeRendererParametersPayload(regularNode, automationNodeId)
 				});
 			}
 
@@ -1929,13 +2112,7 @@ namespace Effekseer
 					["zWrite"] = values.ZWrite.Value,
 					["zTest"] = values.ZTest.Value
 				},
-				["fade"] = new JObject
-				{
-					["fadeInType"] = CreateEnumPayload(values.FadeInType),
-					["fadeIn"] = CreateFadePayload(values.FadeIn),
-					["fadeOutType"] = CreateEnumPayload(values.FadeOutType),
-					["fadeOut"] = CreateFadePayload(values.FadeOut)
-				},
+				["fade"] = CreateRendererFadePayload(values),
 				["uv"] = CreateUVPayload(values),
 				["colorInheritType"] = CreateEnumPayload(values.ColorInheritType),
 				["customData"] = new JObject
@@ -2107,6 +2284,17 @@ namespace Effekseer
 				["frame"] = CreateFloatPayload(value.Frame),
 				["startSpeed"] = CreateEnumPayload(value.StartSpeed),
 				["endSpeed"] = CreateEnumPayload(value.EndSpeed)
+			};
+		}
+
+		static JObject CreateRendererFadePayload(Data.RendererCommonValues values)
+		{
+			return new JObject
+			{
+				["fadeInType"] = CreateEnumPayload(values.FadeInType),
+				["fadeIn"] = CreateFadePayload(values.FadeIn),
+				["fadeOutType"] = CreateEnumPayload(values.FadeOutType),
+				["fadeOut"] = CreateFadePayload(values.FadeOut)
 			};
 		}
 
@@ -2474,6 +2662,86 @@ namespace Effekseer
 				TryGetFiniteFloatParameter(parameters, "z", -MaxAutomationFloatAbs, MaxAutomationFloatAbs, out z, out error);
 		}
 
+		struct FloatRandom
+		{
+			public float Center;
+			public float Min;
+			public float Max;
+		}
+
+		struct Vector3DRandom
+		{
+			public FloatRandom X;
+			public FloatRandom Y;
+			public FloatRandom Z;
+		}
+
+		static bool TryGetFloatRandomParameters(JObject parameters, out float center, out float min, out float max, out string error)
+		{
+			center = 0;
+			min = 0;
+			max = 0;
+
+			if (!TryGetFiniteFloatParameter(parameters, "center", -MaxAutomationFloatAbs, MaxAutomationFloatAbs, out center, out error) ||
+				!TryGetFiniteFloatParameter(parameters, "min", -MaxAutomationFloatAbs, MaxAutomationFloatAbs, out min, out error) ||
+				!TryGetFiniteFloatParameter(parameters, "max", -MaxAutomationFloatAbs, MaxAutomationFloatAbs, out max, out error))
+			{
+				return false;
+			}
+
+			if (min > center || center > max)
+			{
+				error = "params.min <= params.center <= params.max is required";
+				return false;
+			}
+
+			return true;
+		}
+
+		static bool TryGetFloatRandomObjectParameter(JObject parameters, string name, out FloatRandom value, out string error)
+		{
+			value = new FloatRandom();
+			error = null;
+
+			if (parameters == null || parameters[name] == null)
+			{
+				error = $"params.{name} is required";
+				return false;
+			}
+
+			if (parameters[name].Type != JTokenType.Object)
+			{
+				error = $"params.{name} must be an object";
+				return false;
+			}
+
+			var obj = (JObject)parameters[name];
+			return TryGetFloatRandomParameters(obj, out value.Center, out value.Min, out value.Max, out error);
+		}
+
+		static bool TryGetVector3DWithRandomObjectParameter(JObject parameters, string name, out Vector3DRandom value, out string error)
+		{
+			value = new Vector3DRandom();
+			error = null;
+
+			if (parameters == null || parameters[name] == null)
+			{
+				error = $"params.{name} is required";
+				return false;
+			}
+
+			if (parameters[name].Type != JTokenType.Object)
+			{
+				error = $"params.{name} must be an object";
+				return false;
+			}
+
+			var obj = (JObject)parameters[name];
+			return TryGetFloatRandomObjectParameter(obj, "x", out value.X, out error) &&
+				TryGetFloatRandomObjectParameter(obj, "y", out value.Y, out error) &&
+				TryGetFloatRandomObjectParameter(obj, "z", out value.Z, out error);
+		}
+
 		struct Rgba
 		{
 			public int R;
@@ -2580,6 +2848,89 @@ namespace Effekseer
 			}
 		}
 
+		static bool TryParseLocationType(string value, out Data.LocationValues.ParamaterType locationType, out string error)
+		{
+			locationType = Data.LocationValues.ParamaterType.Fixed;
+			error = null;
+
+			switch ((value ?? string.Empty).Trim().ToLowerInvariant())
+			{
+				case "fixed":
+					locationType = Data.LocationValues.ParamaterType.Fixed;
+					return true;
+				case "pva":
+					locationType = Data.LocationValues.ParamaterType.PVA;
+					return true;
+				default:
+					error = "params.locationType must be one of fixed, pva";
+					return false;
+			}
+		}
+
+		static bool TryParseScaleType(string value, out Data.ScaleValues.ParamaterType scaleType, out string error)
+		{
+			scaleType = Data.ScaleValues.ParamaterType.Fixed;
+			error = null;
+
+			switch ((value ?? string.Empty).Trim().ToLowerInvariant())
+			{
+				case "fixed":
+					scaleType = Data.ScaleValues.ParamaterType.Fixed;
+					return true;
+				case "pva":
+					scaleType = Data.ScaleValues.ParamaterType.PVA;
+					return true;
+				default:
+					error = "params.scaleType must be one of fixed, pva";
+					return false;
+			}
+		}
+
+		static bool TryParseFadeInType(string value, out Data.RendererCommonValues.FadeInMethod fadeInType, out string error)
+		{
+			fadeInType = Data.RendererCommonValues.FadeInMethod.None;
+			error = null;
+
+			switch ((value ?? string.Empty).Trim().ToLowerInvariant())
+			{
+				case "none":
+					fadeInType = Data.RendererCommonValues.FadeInMethod.None;
+					return true;
+				case "use":
+					fadeInType = Data.RendererCommonValues.FadeInMethod.Use;
+					return true;
+				default:
+					error = "params.fadeInType must be one of none, use";
+					return false;
+			}
+		}
+
+		static bool TryParseFadeOutType(string value, out Data.RendererCommonValues.FadeOutMethod fadeOutType, out string error)
+		{
+			fadeOutType = Data.RendererCommonValues.FadeOutMethod.None;
+			error = null;
+
+			switch ((value ?? string.Empty).Trim().ToLowerInvariant())
+			{
+				case "none":
+					fadeOutType = Data.RendererCommonValues.FadeOutMethod.None;
+					return true;
+				case "withinlifetime":
+				case "within_lifetime":
+				case "within-lifetime":
+					fadeOutType = Data.RendererCommonValues.FadeOutMethod.WithinLifetime;
+					return true;
+				case "afterremoved":
+				case "after_removed":
+				case "after-removed":
+					fadeOutType = Data.RendererCommonValues.FadeOutMethod.AfterRemoved;
+					return true;
+				default:
+					error = "params.fadeOutType must be one of none, withinLifetime, afterRemoved";
+					return false;
+			}
+		}
+
 		static void SetVector3D(Data.Value.Vector3D value, float x, float y, float z)
 		{
 			Command.CommandManager.StartCollection();
@@ -2593,6 +2944,38 @@ namespace Effekseer
 			{
 				Command.CommandManager.EndCollection();
 			}
+		}
+
+		static void SetFloatWithRandom(Data.Value.FloatWithRandom value, float center, float min, float max)
+		{
+			Command.CommandManager.StartCollection();
+			try
+			{
+				SetFloatWithRandomDirect(value, new FloatRandom
+				{
+					Center = center,
+					Min = min,
+					Max = max
+				});
+			}
+			finally
+			{
+				Command.CommandManager.EndCollection();
+			}
+		}
+
+		static void SetVector3DWithRandom(Data.Value.Vector3DWithRandom value, Vector3DRandom random)
+		{
+			SetFloatWithRandomDirect(value.X, random.X);
+			SetFloatWithRandomDirect(value.Y, random.Y);
+			SetFloatWithRandomDirect(value.Z, random.Z);
+		}
+
+		static void SetFloatWithRandomDirect(Data.Value.FloatWithRandom value, FloatRandom random)
+		{
+			value.SetMin(random.Min);
+			value.SetMax(random.Max);
+			value.SetCenter(random.Center);
 		}
 
 		static void SetColor(Data.Value.Color value, Rgba color)
