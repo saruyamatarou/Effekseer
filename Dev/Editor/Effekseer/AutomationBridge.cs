@@ -32,6 +32,8 @@ namespace Effekseer
 			"save_project_to_workspace",
 			"open_project_from_workspace",
 			"export_runtime_effect_to_workspace",
+			"set_node_color_texture_from_workspace_by_automation_id",
+			"set_node_normal_texture_from_workspace_by_automation_id",
 			"add_node_to_selected",
 			"select_node_by_id",
 			"add_node_to_parent",
@@ -334,6 +336,62 @@ namespace Effekseer
 				{
 					["path"] = workspaceRelativePath,
 					["bytes"] = binary.Length
+				});
+			}
+
+			if (command == "set_node_color_texture_from_workspace_by_automation_id")
+			{
+				if (!TryGetWritableDataNode(command, parameters, out var automationNodeId, out var regularNode, out var error) ||
+					!TryGetStringParameter(parameters, "path", out var path, out error))
+				{
+					return CreateError(command, error);
+				}
+
+				if (!TryValidateWorkspaceTexturePath(path, out var fullPath, out var workspaceRelativePath, out error))
+				{
+					return CreateError(command, error);
+				}
+
+				var target = regularNode.RendererCommonValues.ColorTexture;
+				var before = CreatePathReferencePayload(target);
+				target.SetAbsolutePath(fullPath);
+				var after = CreatePathReferencePayload(target);
+				return CreateOk(command, new JObject
+				{
+					["automationNodeId"] = automationNodeId,
+					["name"] = regularNode.Name.Value,
+					["path"] = workspaceRelativePath,
+					["before"] = before,
+					["after"] = after,
+					["rendererParameters"] = CreateNodeRendererParametersPayload(regularNode, automationNodeId)
+				});
+			}
+
+			if (command == "set_node_normal_texture_from_workspace_by_automation_id")
+			{
+				if (!TryGetWritableDataNode(command, parameters, out var automationNodeId, out var regularNode, out var error) ||
+					!TryGetStringParameter(parameters, "path", out var path, out error))
+				{
+					return CreateError(command, error);
+				}
+
+				if (!TryValidateWorkspaceTexturePath(path, out var fullPath, out var workspaceRelativePath, out error))
+				{
+					return CreateError(command, error);
+				}
+
+				var target = regularNode.RendererCommonValues.NormalTexture;
+				var before = CreatePathReferencePayload(target);
+				target.SetAbsolutePath(fullPath);
+				var after = CreatePathReferencePayload(target);
+				return CreateOk(command, new JObject
+				{
+					["automationNodeId"] = automationNodeId,
+					["name"] = regularNode.Name.Value,
+					["path"] = workspaceRelativePath,
+					["before"] = before,
+					["after"] = after,
+					["rendererParameters"] = CreateNodeRendererParametersPayload(regularNode, automationNodeId)
 				});
 			}
 
@@ -1305,6 +1363,44 @@ namespace Effekseer
 			}
 
 			return true;
+		}
+
+		bool TryValidateWorkspaceTexturePath(string path, out string fullPath, out string workspaceRelativePath, out string error)
+		{
+			if (!TryValidateWorkspacePath(path, out fullPath, out workspaceRelativePath, out error))
+			{
+				return false;
+			}
+
+			var extension = Path.GetExtension(fullPath);
+			if (!IsAllowedTextureExtension(extension))
+			{
+				error = "path extension must be one of .png, .jpg, .jpeg, .tga, .dds, .bmp, .gif";
+				fullPath = null;
+				workspaceRelativePath = null;
+				return false;
+			}
+
+			if (!File.Exists(fullPath))
+			{
+				error = "texture file is not found";
+				fullPath = null;
+				workspaceRelativePath = null;
+				return false;
+			}
+
+			return true;
+		}
+
+		static bool IsAllowedTextureExtension(string extension)
+		{
+			return string.Equals(extension, ".png", StringComparison.OrdinalIgnoreCase) ||
+				string.Equals(extension, ".jpg", StringComparison.OrdinalIgnoreCase) ||
+				string.Equals(extension, ".jpeg", StringComparison.OrdinalIgnoreCase) ||
+				string.Equals(extension, ".tga", StringComparison.OrdinalIgnoreCase) ||
+				string.Equals(extension, ".dds", StringComparison.OrdinalIgnoreCase) ||
+				string.Equals(extension, ".bmp", StringComparison.OrdinalIgnoreCase) ||
+				string.Equals(extension, ".gif", StringComparison.OrdinalIgnoreCase);
 		}
 
 		static bool HasParentDirectoryTraversal(string path)

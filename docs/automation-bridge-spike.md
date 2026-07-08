@@ -788,6 +788,67 @@ Response shape:
 
 Texture assignment, material file assignment, model file assignment, procedural model editing, and generic renderer property writes are intentionally deferred to a later phase with a workspace-aware asset contract.
 
+## Texture workspace assignment commands
+
+Texture assignment v1 allows MCP/AI clients to assign an existing texture file under the configured automation workspace to renderer-common texture slots. It does not copy/import files, read texture contents, list directories, or assign material/model files.
+
+The bridge validates every path with the same workspace guard used by project save/open/export:
+
+- `--automation-workspace` or `EFFEKSEER_AUTOMATION_WORKSPACE` must be configured.
+- The workspace directory must exist.
+- The requested path must normalize inside the workspace.
+- Parent traversal such as `..` is rejected.
+- The texture file must already exist.
+- The response returns only a workspace-relative path.
+
+Allowed texture extensions:
+
+- `.png`
+- `.jpg`
+- `.jpeg`
+- `.tga`
+- `.dds`
+- `.bmp`
+- `.gif`
+
+Smoke tests should place test files such as `workspace/inputs/textures/test.png` and `workspace/inputs/textures/normal.png` before issuing these commands.
+
+### set_node_color_texture_from_workspace_by_automation_id
+
+Request:
+
+```json
+{"command":"set_node_color_texture_from_workspace_by_automation_id","params":{"automationNodeId":"0/1","path":"inputs/textures/test.png"}}
+```
+
+This sets `RendererCommonValues.ColorTexture` through the existing `Value.Path` command route. It targets only regular `Data.Node` objects.
+
+Response shape:
+
+```json
+{"ok":true,"command":"set_node_color_texture_from_workspace_by_automation_id","result":{"automationNodeId":"0/1","name":"Node","path":"inputs/textures/test.png","before":{"hasValue":false,"pathStatus":"empty","summary":"No path is set"},"after":{"hasValue":true,"pathStatus":"set_omitted","summary":"Path is set but omitted to avoid exposing absolute or workspace-outside paths"},"rendererParameters":{}}}
+```
+
+### set_node_normal_texture_from_workspace_by_automation_id
+
+Request:
+
+```json
+{"command":"set_node_normal_texture_from_workspace_by_automation_id","params":{"automationNodeId":"0/1","path":"inputs/textures/normal.png"}}
+```
+
+This sets `RendererCommonValues.NormalTexture` through the existing `Value.Path` command route. It targets only regular `Data.Node` objects.
+
+Response shape:
+
+```json
+{"ok":true,"command":"set_node_normal_texture_from_workspace_by_automation_id","result":{"automationNodeId":"0/1","name":"Node","path":"inputs/textures/normal.png","before":{"hasValue":false,"pathStatus":"empty","summary":"No path is set"},"after":{"hasValue":true,"pathStatus":"set_omitted","summary":"Path is set but omitted to avoid exposing absolute or workspace-outside paths"},"rendererParameters":{}}}
+```
+
+`get_node_renderer_parameters_by_automation_id` continues to omit absolute paths. After assignment, texture references are reported as `hasValue: true` and `pathStatus: set_omitted` rather than exposing local filesystem paths.
+
+Material assignment, model assignment, texture copy/import, arbitrary file reads, directory listing, and workspace file deletion are intentionally deferred.
+
 ## Parameter write commands
 
 This started as a minimal parameter write spike for one boolean field, `NodeBase.IsRendered`. The bridge now includes a small basic write set for hand-written, allowlisted numeric parameters. It still intentionally avoids a generic parameter setter.
@@ -958,6 +1019,7 @@ $client.Close()
 - Drawing and renderer inspection commands never return absolute texture, material, model, or other local resource paths. Path fields are reported only as empty or set-but-omitted summaries in this phase.
 - Parameter write commands are explicitly allowlisted one by one. The current write surface is `set_node_is_rendered_by_automation_id`, the limited basic numeric write set, and the file-reference-free drawing/renderer write set; there is no generic `set_parameter`.
 - Drawing/renderer writes accept string allowlists for enums and bounded integer RGBA values only. They do not accept enum integer IDs, arbitrary property names, reflection writes, or texture/material/model path assignment.
+- Texture assignment commands are explicitly allowlisted and constrained to existing files under the configured automation workspace. They do not read file contents, list directories, import/copy files, or return absolute local paths.
 - File operation commands are explicitly allowlisted and constrained to the configured automation workspace. They do not return absolute local paths.
 - Responses intentionally avoid absolute paths and local resource paths.
 
@@ -972,4 +1034,5 @@ $client.Close()
 - Texture/material/model references are currently path summaries only. A future asset inspection phase can return workspace-relative paths after defining a safe asset catalog contract.
 - Parameter write currently covers only `NodeBase.IsRendered`, `CommonValues.MaxGeneration`, `CommonValues.Life`, and fixed location/rotation/scale vectors. Undo/redo should use existing value object command routes, but end-to-end editor smoke testing should keep validating this as the write surface expands.
 - Drawing/renderer write currently covers `ColorAll.Fixed`, sprite fixed corner colors, renderer-common alpha blend, Z write/test, and renderer type. It does not assign texture/material/model files.
+- Texture assignment currently covers only renderer-common color and normal texture slots from existing workspace files with allowlisted image extensions. Sprite/Ribbon/Ring legacy `ColorTexture`, material files, model files, and texture import/copy flows are not implemented.
 - File operations currently cover only `.efkefc` project save/open and `.efk` runtime binary export inside the automation workspace. glTF/glb export and asset import are planned for later phases.
