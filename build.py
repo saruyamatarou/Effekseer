@@ -219,6 +219,7 @@ def main():
             shutil.rmtree('Dev/release/osx-x64')
 
         elif is_windows():
+            subprocess.run([sys.executable, 'Tool/Mcp/scripts/build_bundle.py'], check=True)
             run_command('dotnet build Dev/Editor/Effekseer/Effekseer.csproj')
             run_command('dotnet publish Dev/Editor/Effekseer/Effekseer.csproj -c Release --self-contained -r win-x64')
             shutil.copytree('Dev/release/win-x64/publish', 'Dev/release', dirs_exist_ok=True)

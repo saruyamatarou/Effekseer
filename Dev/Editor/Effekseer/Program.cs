@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -35,6 +35,7 @@ namespace Effekseer
 			string export = string.Empty;
 			float magnification = 0.0f;
 			bool materialCache = false;
+			bool mcpEnabled = Environment.GetEnvironmentVariable("EFFEKSEER_MCP_ENABLED") != "0";
 			int automationPort = GetAutomationPortFromEnvironment();
 			string automationWorkspace = GetAutomationWorkspaceFromEnvironment();
 
@@ -88,6 +89,10 @@ namespace Effekseer
 				{
 					materialCache = true;
 				}
+				else if (args[i] == "--no-mcp")
+				{
+					mcpEnabled = false;
+				}
 				else if (args[i] == "--automation-port")
 				{
 					i++;
@@ -112,13 +117,13 @@ namespace Effekseer
 
 			if (System.Diagnostics.Debugger.IsAttached)
 			{
-				return Exec(gui, input, output, export, format, magnification, materialCache, automationPort, automationWorkspace);
+				return Exec(gui, input, output, export, format, magnification, materialCache, automationPort, automationWorkspace, mcpEnabled);
 			}
 			else
 			{
 				try
 				{
-					return Exec(gui, input, output, export, format, magnification, materialCache, automationPort, automationWorkspace);
+					return Exec(gui, input, output, export, format, magnification, materialCache, automationPort, automationWorkspace, mcpEnabled);
 				}
 				catch (Exception e)
 				{
@@ -129,11 +134,14 @@ namespace Effekseer
 			return 1;
 		}
 
-		static int Exec(bool gui, string input, string output, string export, string format, float magnification, bool materialCache, int automationPort, string automationWorkspace)
+		static int Exec(bool gui, string input, string output, string export, string format, float magnification, bool materialCache, int automationPort, string automationWorkspace, bool mcpEnabled)
 		{
 			var app = new App();
-			app.AutomationPort = automationPort;
-			app.AutomationWorkspace = automationWorkspace;
+			app.McpEnabled = mcpEnabled;
+			app.AutomationPort = mcpEnabled && automationPort == 0 ? 50123 : automationPort;
+			app.AutomationWorkspace = Path.GetFullPath(string.IsNullOrWhiteSpace(automationWorkspace)
+				? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Effekseer", "Mcp", "workspace")
+				: automationWorkspace);
 			if (!app.Initialize(gui))
 			{
 				return 1;

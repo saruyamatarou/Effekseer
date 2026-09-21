@@ -64,3 +64,5 @@ Script/__pycache__/aceutils.cpython-37.pyc
 Tool/fbxsdk
 
 EffekseerTool/
+Dev/release/mcp/
+Dev/release/win-x64/

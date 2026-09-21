@@ -1,0 +1,10 @@
+System.Net.Sockets.SocketException (10048): 通常、各ソケット アドレスに対してプロトコル、ネットワーク アドレス、またはポートのどれか 1 つのみを使用できます。
+   at System.Net.Sockets.Socket.UpdateStatusAfterSocketErrorAndThrowException(SocketError error, Boolean disconnectOnFailure, String callerName)
+   at System.Net.Sockets.Socket.DoBind(EndPoint endPointSnapshot, SocketAddress socketAddress)
+   at System.Net.Sockets.Socket.Bind(EndPoint localEP)
+   at System.Net.Sockets.TcpListener.Start(Int32 backlog)
+   at Effekseer.AutomationBridge.Start() in D:\Documents\GitHub\Effekseer\Dev\Editor\Effekseer\AutomationBridge.cs:line 110
+   at Effekseer.App.OnInitialize() in D:\Documents\GitHub\Effekseer\Dev\Editor\Effekseer\App.cs:line 86
+   at Effekseer.Application.Initialize(Boolean gui) in D:\Documents\GitHub\Effekseer\Dev\Editor\EffekseerCoreGUI\Application.cs:line 166
+   at Effekseer.Program.Exec(Boolean gui, String input, String output, String export, String format, Single magnification, Boolean materialCache, Int32 automationPort, String automationWorkspace) in D:\Documents\GitHub\Effekseer\Dev\Editor\Effekseer\Program.cs:line 137
+   at Effekseer.Program.Main(String[] args) in D:\Documents\GitHub\Effekseer\Dev\Editor\Effekseer\Program.cs:line 121

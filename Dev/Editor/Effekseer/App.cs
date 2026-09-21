@@ -15,6 +15,8 @@ namespace Effekseer
 	{
 		swig.DeviceType deviceType;
 		AutomationBridge automationBridge;
+		McpServerProcess mcpServer;
+		public bool McpEnabled { get; set; } = true;
 
 		public int AutomationPort
 		{
@@ -82,8 +84,26 @@ namespace Effekseer
 
 			if (AutomationPort > 0)
 			{
-				automationBridge = new AutomationBridge(AutomationPort, AutomationWorkspace);
-				automationBridge.Start();
+				try
+				{
+					System.IO.Directory.CreateDirectory(AutomationWorkspace);
+					automationBridge = new AutomationBridge(AutomationPort, AutomationWorkspace);
+					automationBridge.Start();
+					if (McpEnabled)
+					{
+						mcpServer = new McpServerProcess();
+						mcpServer.Start(AutomationPort, AutomationWorkspace);
+					}
+				}
+				catch (Exception e)
+				{
+					// A second editor or unavailable MCP runtime must not prevent editing.
+					McpServerProcess.Log("Automation/MCP startup failed: " + e.Message);
+					mcpServer?.Dispose();
+					mcpServer = null;
+					automationBridge?.Dispose();
+					automationBridge = null;
+				}
 			}
 		}
 
@@ -94,6 +114,8 @@ namespace Effekseer
 
 		protected override void OnTerminate()
 		{
+			mcpServer?.Dispose();
+			mcpServer = null;
 			automationBridge?.Dispose();
 			automationBridge = null;
 		}

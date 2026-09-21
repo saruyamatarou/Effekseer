@@ -1,0 +1,21 @@
+.venv/
+build/
+dist/
+.uv-cache/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+
+.env
+
+workspace/
+*.log
+
+# Generated Effekseer outputs
+*.efk
+*.efkpkg
+
+# Large/generated previews
+*.mp4
+*.gif
+*.webm

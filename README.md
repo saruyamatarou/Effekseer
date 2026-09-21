@@ -1,6 +1,8 @@
 ﻿Effekseer
 =========
 
+Windows版は通常起動でMCPサーバーも起動します。[MCP統合ガイド](Tool/Mcp/INTEGRATION.md)を参照してください。
+
 ![Effekseer](docs/Images/EpicMegaGrants_Effekseer.png)
 
 This software is a particle effect editing tool. 
